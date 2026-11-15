@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Rootiest Icons</string>
+    <!-- the name under the launcher icon: the Rootiest apps share a launcher folder, so the icon tells them apart -->
+    <string name="launcher_name">Icons</string>
+</resources>
