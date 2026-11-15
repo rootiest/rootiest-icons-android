@@ -1,0 +1,4 @@
+<paths>
+    <!-- cache/renders: the files of the last render, for Share -->
+    <cache-path name="renders" path="renders/" />
+</paths>
