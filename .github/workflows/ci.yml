@@ -5,6 +5,9 @@ name: CI
 on:
   push:
   workflow_dispatch:
+# it only reads the code and uploads the APK as an artifact
+permissions:
+  contents: read
 jobs:
   test:
     if: github.server_url == 'https://github.com'
