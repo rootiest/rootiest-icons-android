@@ -2,21 +2,27 @@ package dev.rootiest.icons.render
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import com.caverock.androidsvg.RenderOptions
 import com.caverock.androidsvg.SVG
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 // Drawing SVG text: AndroidSVG draws the icons' paths, CSS classes and knockout masks onto a bitmap.
 object Svg {
-    // A square bitmap of the SVG, on a background color or transparent.
-    fun rasterize(text: String, size: Int, background: Int? = null): Bitmap {
+    // A square bitmap of the SVG, on a background color or transparent. With a tint, what the file leaves to
+    // currentColor or to the default fill (black) is drawn in it instead; colors the file sets stay as they are.
+    fun rasterize(text: String, size: Int, background: Int? = null, tint: Int? = null): Bitmap {
         val svg = SVG.getFromString(text)
         svg.setDocumentWidth(size.toFloat())
         svg.setDocumentHeight(size.toFloat())
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         background?.let(canvas::drawColor)
-        svg.renderToCanvas(canvas)
+        if (tint == null) svg.renderToCanvas(canvas)
+        else {
+            val hex = "#%06x".format(tint and 0xffffff)
+            svg.renderToCanvas(canvas, RenderOptions.create().css("svg { color: $hex; fill: $hex }"))
+        }
         return bitmap
     }
 

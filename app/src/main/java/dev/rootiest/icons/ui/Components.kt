@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalDensity
@@ -64,13 +65,13 @@ private val drawn = object : LruCache<String, ImageBitmap>(48 * 1024 * 1024) {
 // An SVG at a size, in the layout a browser would show at that size (the emblem grows as the icon shrinks).
 // layout: "auto", or one layout at any size.
 @Composable
-internal fun SvgImage(svg: String?, size: Dp, description: String?, modifier: Modifier = Modifier, layout: String = "auto") {
+internal fun SvgImage(svg: String?, size: Dp, description: String?, modifier: Modifier = Modifier, layout: String = "auto", tint: Color? = null) {
     val px = with(LocalDensity.current) { size.roundToPx() }
-    val bitmap by produceState<ImageBitmap?>(null, svg, px, layout) {
+    val bitmap by produceState<ImageBitmap?>(null, svg, px, layout, tint) {
         value = svg?.let { text ->
-            val key = "${text.hashCode()}-${text.length}-$px-$layout"
+            val key = "${text.hashCode()}-${text.length}-$px-$layout-${tint?.toArgb()}"
             drawn.get(key) ?: withContext(Dispatchers.Default) {
-                runCatching { Svg.rasterize(rasterSvg(text, layout, size.value.toInt(), layoutsOf(text)), px).asImageBitmap() }.getOrNull()
+                runCatching { Svg.rasterize(rasterSvg(text, layout, size.value.toInt(), layoutsOf(text)), px, tint = tint?.toArgb()).asImageBitmap() }.getOrNull()
             }?.also { drawn.put(key, it) }
         }
     }
