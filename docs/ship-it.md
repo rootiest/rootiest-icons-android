@@ -30,14 +30,16 @@ name; anything left out uses that step's defaults.
   `Area/App`, `Area/Build`, `Area/CI`, `Area/Docs`, `Area/Tests`.
 
 ## verify-it
-- CI does not run on Gitea and reports nothing on the Gitea PR. `.github/workflows/ci.yml` runs
-  on a GitHub mirror once the repository has one; until then there is no CI, and the local
-  `./tests/run-tests.sh` run from `push-it` is the check.
+- CI does not run on Gitea and reports nothing on the Gitea PR. It runs on the GitHub mirror
+  (`rootiest/rootiest-icons-android`) for every branch the push mirror copies there, usually
+  within a minute of the push. Find the run by commit:
+  `gh run list -R rootiest/rootiest-icons-android --commit <sha>`, then `gh run watch <id>`.
+- One workflow, `CI`: the tests, then the debug APK.
 
 ## merge-it
 - Merge method: merge commit.
-- The maintainer has pre-approved merging in this repository: merge without asking once the
-  tests passed on the head commit. Stop and ask when a PR changes the release signing, the
+- The maintainer has pre-approved merging in this repository: merge without asking once CI
+  passed on the head commit. Stop and ask when a PR changes the release signing, the
   application id or the permissions in the manifest.
 - After the merge, label each issue the PR closed `Reviewed/Fixed`.
 
@@ -45,8 +47,9 @@ name; anything left out uses that step's defaults.
 - No automated commits follow a merge.
 
 ## deploy-it
-Deploying means publishing a signed release on Gitea, which phones pick up through Obtainium
-(`docs/README.md`, Releases). The maintainer has pre-approved releasing from this repository.
+Deploying means publishing a signed release on Gitea, which phones pick up through Obtainium, and
+the same version on Google Play's internal testing track (`docs/README.md`, Releases). The
+maintainer has pre-approved releasing from this repository.
 
 **Nothing to deploy** when nothing in `app/`, `core/` or the Gradle build changed since the
 last release tag.
@@ -59,10 +62,12 @@ last release tag.
 2. **Dry run**, on a clean `main` that matches `origin/main`: `scripts/release.sh --dry-run`.
 3. **Release:** `scripts/release.sh`. It runs the tests, builds the APK, refuses one not signed
    with the release key (which only the maintainer's machine holds, through `rootiest.signing`
-   in `~/.gradle/gradle.properties`), and creates the Gitea release `v<version>`.
-4. **Verify:** the release page it prints lists `rootiest-icons-<version>.apk`.
-
-Google Play is not used.
+   in `~/.gradle/gradle.properties`), creates the Gitea release `v<version>`, then releases the
+   bundle on Google Play's internal track. If only the Play upload fails, run the retry command
+   it prints.
+4. **Verify:** the release page it prints lists `rootiest-icons-<version>.apk`, and
+   `scripts/play-upload.py --package dev.rootiest.icons --check` lists the new version on
+   `internal`.
 
 **Rollback:** none. A phone cannot install an older version over a newer one, so fix a bad
 release with a new patch release. Never delete a published release unless the user asks.
