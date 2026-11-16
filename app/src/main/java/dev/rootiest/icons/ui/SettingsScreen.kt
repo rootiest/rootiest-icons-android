@@ -1,6 +1,8 @@
 package dev.rootiest.icons.ui
 
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -29,6 +31,8 @@ import dev.rootiest.icons.data.PreviewBackground
 import dev.rootiest.icons.data.PRIVACY
 import dev.rootiest.icons.data.SITE
 import dev.rootiest.icons.data.SOURCE
+import dev.rootiest.icons.data.STATUS_PAGE
+import dev.rootiest.icons.data.SUPPORT
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,9 +97,13 @@ fun SettingsScreen(vm: IconsViewModel) {
                     Divider()
                     SettingRow("Command line tool", "render-rootiest-icons: every render here shows its command", R.drawable.ic_tabler_code) { browse("$SITE/#render") }
                     Divider()
+                    SettingRow("Status page", "status.rootiest.dev: whether the Rootiest services are up", R.drawable.ic_tabler_activity_heartbeat) { browse(STATUS_PAGE) }
+                    Divider()
                     SettingRow("Source code", "git.rootiest.dev/rootiest/rootiest-icons-android", R.drawable.ic_tabler_brand_git) { browse(SOURCE) }
                     Divider()
                     SettingRow("Privacy policy", "No ads, analytics or tracking; your own files stay on the phone", R.drawable.ic_tabler_shield_lock) { browse(PRIVACY) }
+                    Divider()
+                    SettingRow("Report an issue", "A support ticket, filled in with the app and phone versions", R.drawable.ic_tabler_bug) { browse(reportLink()) }
                     Divider()
                     SettingRow("Open-source licenses", "The libraries and icon sets the app is built with", R.drawable.ic_tabler_license) { vm.open(Route.Licenses) }
                 }
@@ -107,4 +115,25 @@ fun SettingsScreen(vm: IconsViewModel) {
             }
         }
     }
+}
+
+// A new support desk ticket about the app (the desk's "Android app" topic), filled in with the app, Android and phone
+// versions. The desk only fills in its form from these; the person still reads it, describes the problem and sends it.
+private fun reportLink(): String {
+    val body = """
+        **App:** Rootiest Icons ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})
+        **Android:** ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})
+        **Phone:** ${Build.MANUFACTURER} ${Build.MODEL}
+
+        **What happened?**
+
+
+    """.trimIndent()
+    return Uri.parse(SUPPORT).buildUpon()
+        .appendQueryParameter("category", "problem")
+        .appendQueryParameter("service", "android")
+        .appendQueryParameter("subject", "Rootiest Icons for Android: ")
+        .appendQueryParameter("body", body)
+        .build()
+        .toString()
 }

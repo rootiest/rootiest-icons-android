@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit
 const val SITE = "https://icons.rootiest.fyi"
 const val SOURCE = "https://git.rootiest.dev/rootiest/rootiest-icons-android"
 const val PRIVACY = "https://rootiest.com/privacy/icons-app"
+const val STATUS_PAGE = "https://status.rootiest.dev"
+const val SUPPORT = "https://support.rootiest.dev/new"
 
 // An icon set at Iconify: its name, who made it, its license, and whether its icons keep their own colors.
 @Serializable
