@@ -38,7 +38,10 @@ import dev.rootiest.icons.R
 import dev.rootiest.icons.Route
 import dev.rootiest.icons.core.manyColors
 import dev.rootiest.icons.data.OwnFile
+import dev.rootiest.icons.data.PreviewBackground
 import dev.rootiest.icons.readSvg
+import dev.rootiest.icons.ui.theme.Latte
+import dev.rootiest.icons.ui.theme.Mocha
 import dev.rootiest.icons.ui.theme.palette
 
 // Your own logo and emblem: an SVG each, from a file or the clipboard. They stay on the phone.
@@ -91,7 +94,13 @@ private fun Zone(vm: IconsViewModel, what: String, state: OwnState, about: Strin
             else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(64.dp).swatch("color", vm.previewBackground), contentAlignment = Alignment.Center) {
-                        if (state.problem == null) SvgImage(f.raw, 48.dp, null)
+                        // the file as it is: what it leaves to currentColor or the default black shows in the swatch's text color
+                        val tint = when (vm.previewBackground) {
+                            PreviewBackground.Dark -> Mocha.Text
+                            PreviewBackground.Light -> Latte.Text
+                            else -> palette.Text
+                        }
+                        if (state.problem == null) SvgImage(f.raw, 48.dp, null, tint = tint)
                     }
                     Column {
                         Text(f.name)
