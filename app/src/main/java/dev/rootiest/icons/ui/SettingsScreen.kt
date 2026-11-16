@@ -26,7 +26,9 @@ import dev.rootiest.icons.R
 import dev.rootiest.icons.Route
 import dev.rootiest.icons.data.Appearance
 import dev.rootiest.icons.data.PreviewBackground
+import dev.rootiest.icons.data.PRIVACY
 import dev.rootiest.icons.data.SITE
+import dev.rootiest.icons.data.SOURCE
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +92,10 @@ fun SettingsScreen(vm: IconsViewModel) {
                     SettingRow("icons.rootiest.fyi", "The same icons, and the same Render panel, in a browser", R.drawable.ic_tabler_world) { browse(SITE) }
                     Divider()
                     SettingRow("Command line tool", "render-rootiest-icons: every render here shows its command", R.drawable.ic_tabler_code) { browse("$SITE/#render") }
+                    Divider()
+                    SettingRow("Source code", "git.rootiest.dev/rootiest/rootiest-icons-android", R.drawable.ic_tabler_brand_git) { browse(SOURCE) }
+                    Divider()
+                    SettingRow("Privacy policy", "No ads, analytics or tracking; your own files stay on the phone", R.drawable.ic_tabler_shield_lock) { browse(PRIVACY) }
                     Divider()
                     SettingRow("Open-source licenses", "The libraries and icon sets the app is built with", R.drawable.ic_tabler_license) { vm.open(Route.Licenses) }
                 }

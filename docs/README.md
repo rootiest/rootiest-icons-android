@@ -31,7 +31,7 @@ The app is [icons.rootiest.fyi](https://icons.rootiest.fyi) for a phone, with th
 | **Detail** | One icon or emblem: its preview, its details, the variant, the padded twin, and for an emblem whether it is on the logo or alone. With a logo of your own loaded, Rootiest logo or Your logo. Placement (upper right or badge, size, right, down), the five layouts side by side, and the Render panel. |
 | **Render panel** | The colors (a category, a status state, a brand's own, or any hex color, for the whole icon or per part), the layouts, any sizes up to 4096 px, PNG, WebP, ICO and SVG, and a background to flatten onto. Render draws every file; Save writes them to `Downloads/Rootiest Icons`, Share hands one file, or a zip of several, to another app. The command that writes the same files with `render-rootiest-icons` is shown and can be copied. |
 | **Your own** | A logo and an emblem of your own, each an SVG from a file or the clipboard, with Keep its colors. They are kept in the app's private storage and never leave the phone. An SVG shared to the app, or opened with it, becomes your emblem. |
-| **Settings** | Appearance (the phone's, light or dark), the preview background, refreshing the catalogue, and About with the open-source licenses. |
+| **Settings** | Appearance (the phone's, light or dark), the preview background, refreshing the catalogue, and About: the version, links to the site, the command line tool, the source code and the privacy policy (`rootiest.com/privacy/icons-app`, the page the Google Play listing links), and the open-source licenses. |
 
 What differs from the command line tool:
 
@@ -140,20 +140,21 @@ the other sets, both themes, and the licenses screen.
 
 ## CI
 
-`.github/workflows/ci.yml` runs `./tests/run-tests.sh` on GitHub Actions and keeps the debug APK. It is GitHub-only:
-no Gitea runner can build Android. It runs once the repository has a push mirror on GitHub; until then, run the
-tests locally before merging.
+`.github/workflows/ci.yml` runs `./tests/run-tests.sh` on GitHub Actions and keeps the debug APK as the `app-debug`
+artifact. It is GitHub-only: no Gitea runner can build Android. It runs on every push the Gitea push mirror copies to
+GitHub (`rootiest/rootiest-icons-android`), and on demand. Results appear on GitHub, not on the Gitea pull request.
 
 ## Releases
 
 A release is a signed APK on the
-[Gitea releases page](https://git.rootiest.dev/rootiest/rootiest-icons-android/releases), tagged `v<version>`.
+[Gitea releases page](https://git.rootiest.dev/rootiest/rootiest-icons-android/releases), tagged `v<version>`, and the
+same version on Google Play's internal testing track.
 
 1. Bump `appVersion` in `build.gradle.kts` through a pull request: minor for a feature, patch otherwise. The
    `versionCode` follows from it.
 2. On a clean `main` that matches `origin/main`: `scripts/release.sh --dry-run`, then `scripts/release.sh`. It runs
-   the tests, builds the release APK, refuses one not signed with the release key, and creates the release with the
-   merged pull requests as its notes.
+   the tests, builds the release APK and app bundle, refuses either if not signed with the release key, creates the
+   release with the merged pull requests as its notes, then releases the bundle on Google Play (below).
 
 The release key is the Rootiest apps' own: a properties file (`storeFile`, `storePassword`, `keyAlias`,
 `keyPassword`) named by the Gradle property `rootiest.signing` in `~/.gradle/gradle.properties`. Without it a release
@@ -161,11 +162,32 @@ build gets the debug key, which `scripts/release.sh` refuses to publish.
 
 A phone cannot install an older version over a newer one, so a bad release is fixed with a new patch release.
 
+### Google Play
+
+- `scripts/release.sh` leaves `rootiest-icons-<version>.aab` in `build/play/` and, after the Gitea release, releases
+  it to the `internal` track with `scripts/play-upload.py`, in one Play edit. If the upload fails, the Gitea release is
+  already out, and `release.sh` prints the command to retry it. `--dry-run` signs in and lists the tracks instead
+  (`play-upload.py --check`).
+- Its release notes list only the pull requests people notice in the app: `feat`, `fix` and `perf`, but not those
+  scoped to `build`, `ci`, `deps` or `release`. They drop the type and number, spell names such as Iconify and SVG
+  properly (the `play_names` list in `release.sh`), and are cut to Play's 500 characters.
+- Play signs with the release key itself (Play App Signing set to the existing key): a key Google generates would be
+  a different certificate, so a Play update could not replace an installed Obtainium build, or the reverse.
+- It signs in with the Rootiest apps' Play service account, whose JSON key is at
+  `~/.local/share/android/play-publisher.json` (mode 600, or `$PLAY_KEY`), on the machine that holds the release key.
+  The account needs release rights on this app in Play Console's Users and permissions. Without the file,
+  `release.sh` leaves the bundle for Play Console, by hand.
+- `play-upload.py` needs only Python's standard library and `openssl`, which signs the sign-in. Play cannot create an
+  app or take its very first bundle through the API: the app is created in Play Console and the first bundle uploaded
+  there by hand. If Play refuses to send the edit for review because the app has other unfinished changes, it commits
+  without sending and says so: check Publishing overview.
+
 ## Scripts
 
 | Script | What it does |
 |---|---|
 | `scripts/release.sh` | Builds and publishes a release (above) |
+| `scripts/play-upload.py` | Uploads app bundles to Google Play and releases them on a testing track |
 | `scripts/make-fixtures.py` | Writes `:core`'s test fixtures from rootiest-icons' own output |
 | `scripts/make-launcher.py` | Writes the launcher icon's drawables from rootiest-icons' `rootiest-icons` icon |
 | `scripts/tabler-drawable.py` | Turns Tabler Icons outlines into `ic_tabler_*.xml` drawables |

@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 const val SITE = "https://icons.rootiest.fyi"
+const val SOURCE = "https://git.rootiest.dev/rootiest/rootiest-icons-android"
+const val PRIVACY = "https://rootiest.com/privacy/icons-app"
 
 // An icon set at Iconify: its name, who made it, its license, and whether its icons keep their own colors.
 @Serializable
