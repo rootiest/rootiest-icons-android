@@ -21,7 +21,7 @@ Android 10 or later. Install the APK from the
 [releases page](https://git.rootiest.dev/rootiest/rootiest-icons-android/releases), or let
 [Obtainium](https://github.com/ImranR98/Obtainium) install it and keep it updated: add the app with the URL
 `https://git.rootiest.dev/rootiest/rootiest-icons-android` and the Forgejo source (Gitea serves the same releases
-API). No token is needed. Testers can also get it from Google Play's internal testing.
+API). No token is needed. Testers can also get it from Google Play's internal or closed testing.
 
 Releases are signed with a certificate whose SHA-256 fingerprint is
 `36:15:BB:5F:65:09:81:1F:A5:BB:82:83:03:B5:72:64:2C:36:3E:40:5A:F9:3D:47:75:23:27:9A:D0:EC:93:A4`.

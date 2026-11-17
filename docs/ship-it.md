@@ -48,7 +48,7 @@ name; anything left out uses that step's defaults.
 
 ## deploy-it
 Deploying means publishing a signed release on Gitea, which phones pick up through Obtainium, and
-the same version on Google Play's internal testing track (`docs/README.md`, Releases). The
+the same version on Google Play's internal and closed testing tracks (`docs/README.md`, Releases). The
 maintainer has pre-approved releasing from this repository.
 
 **Nothing to deploy** when nothing in `app/`, `core/` or the Gradle build changed since the
@@ -59,15 +59,18 @@ last release tag.
    through `push-it`, `verify-it`, `merge-it` and `sync-it`: branch `chore/release-<version>`,
    commit and title `chore: version <version>`, labels `Kind/Chore` and `Area/Build`. The first
    release, 0.1.0, needs no bump.
-2. **Dry run**, on a clean `main` that matches `origin/main`: `scripts/release.sh --dry-run`.
+2. **Dry run**, on a clean `main` that matches `origin/main`: `scripts/release.sh --dry-run`. When the
+   usual checkout is busy with other work, use a fresh clone (with a copy of `local.properties`)
+   rather than moving its `main`.
 3. **Release:** `scripts/release.sh`. It runs the tests, builds the APK, refuses one not signed
    with the release key (which only the maintainer's machine holds, through `rootiest.signing`
    in `~/.gradle/gradle.properties`), creates the Gitea release `v<version>`, then releases the
-   bundle on Google Play's internal track. If only the Play upload fails, run the retry command
-   it prints.
+   bundle on Google Play's internal and closed testing tracks (`internal` and `alpha`). If only
+   the Play upload fails, run the retry command it prints.
 4. **Verify:** the release page it prints lists `rootiest-icons-<version>.apk`, and
-   `scripts/play-upload.py --package dev.rootiest.icons --check` lists the new version on
-   `internal`.
+   `scripts/play-upload.py --package dev.rootiest.icons --check` lists the new version on both
+   `internal` and `alpha`. A version that reached only `internal` goes to closed testing with
+   `scripts/play-upload.py --package dev.rootiest.icons --promote internal=alpha`.
 
 **Rollback:** none. A phone cannot install an older version over a newer one, so fix a bad
 release with a new patch release. Never delete a published release unless the user asks.
