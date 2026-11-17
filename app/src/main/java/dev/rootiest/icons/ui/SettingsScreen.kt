@@ -66,7 +66,7 @@ fun SettingsScreen(vm: IconsViewModel) {
             item {
                 ChoiceCard(
                     listOf(
-                        Choice(PreviewBackground.Auto, "Each variant's own", "Dark icons on dark, light icons on light"),
+                        Choice(PreviewBackground.Auto, "Each variant's own", "Dark icons on dark, light icons on light; color and auto ones as the light or dark preview"),
                         Choice(PreviewBackground.Dark, "Dark"),
                         Choice(PreviewBackground.Light, "Light"),
                         Choice(PreviewBackground.Checker, "Checkerboard", "Shows what is transparent"),
@@ -92,6 +92,8 @@ fun SettingsScreen(vm: IconsViewModel) {
             item {
                 SettingsCard {
                     SettingRow("Rootiest Icons", "Version ${BuildConfig.VERSION_NAME}", R.drawable.ic_tabler_info_circle)
+                    Divider()
+                    SettingRow("Drawn with Math", "Why we like SVG, an interactive tour", R.drawable.ic_tabler_vector_bezier_2) { vm.open(Route.Article) }
                     Divider()
                     SettingRow("icons.rootiest.fyi", "The same icons, and the same Render panel, in a browser", R.drawable.ic_tabler_world) { browse(SITE) }
                     Divider()

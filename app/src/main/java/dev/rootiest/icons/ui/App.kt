@@ -19,6 +19,7 @@ fun IconsApp(vm: IconsViewModel) {
             Route.Own -> OwnScreen(vm)
             Route.Settings -> SettingsScreen(vm)
             Route.Licenses -> LicensesScreen(vm::back)
+            Route.Article -> ArticleScreen(vm)
         }
     }
 }

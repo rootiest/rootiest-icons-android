@@ -197,7 +197,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
                             Modifier.width(104.dp).clip(RoundedCornerShape(10.dp)).clickable(onClickLabel = "Share ${r.file.name}") { runCatching { share(context, listOf(r.file), stem) } },
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Box(Modifier.size(104.dp).swatch(c.variant, vm.previewBackground), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(104.dp).swatch(c.variant, vm.previewBackground, previewDark(vm)), contentAlignment = Alignment.Center) {
                                 r.preview?.let { Image(it.asImageBitmap(), contentDescription = r.file.name, Modifier.size(minOf(it.width, 96).dp)) }
                             }
                             Text(r.file.name, style = MaterialTheme.typography.labelSmall, maxLines = 3)

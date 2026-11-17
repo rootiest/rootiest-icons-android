@@ -45,6 +45,10 @@ data class IconEntry(
     val description: String = "",
     val variants: List<String> = listOf("color"),
     val padded: Boolean = false,
+    // an auto/ version: the dark and light versions in one SVG that switches with the viewer's mode
+    val auto: Boolean = false,
+    // false for an SVG-only icon (an -auto one: a raster cannot switch)
+    val rasters: Boolean = true,
     val layouts: List<Int> = emptyList(),
     val parts: Parts = Parts(),
     val emblem: String? = null,

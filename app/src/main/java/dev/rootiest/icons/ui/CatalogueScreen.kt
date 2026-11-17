@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
@@ -70,19 +71,23 @@ private fun matches(query: String, category: String, vararg fields: String?, cat
 }
 
 // The catalogue: every icon, status icon and emblem, filtered by the search box and the category, and what the
-// other sets have for the search.
+// other sets have for the search. The search, variant and category stay at the top while the icons scroll.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CatalogueScreen(vm: IconsViewModel) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Rootiest Icons") },
-                actions = {
-                    IconButton(onClick = { vm.open(Route.Own) }) { Icon(painterResource(R.drawable.ic_tabler_photo_up), contentDescription = "Your own logo and emblem") }
-                    IconButton(onClick = { vm.open(Route.Settings) }) { Icon(painterResource(R.drawable.ic_tabler_settings), contentDescription = "Settings") }
-                },
-            )
+            Column(Modifier.background(MaterialTheme.colorScheme.background)) {
+                TopAppBar(
+                    title = { Text("Rootiest Icons") },
+                    actions = {
+                        IconButton(onClick = { vm.open(Route.Article) }) { Icon(painterResource(R.drawable.ic_tabler_vector_bezier_2), contentDescription = "Drawn with Math: why SVG") }
+                        IconButton(onClick = { vm.open(Route.Own) }) { Icon(painterResource(R.drawable.ic_tabler_photo_up), contentDescription = "Your own logo and emblem") }
+                        IconButton(onClick = { vm.open(Route.Settings) }) { Icon(painterResource(R.drawable.ic_tabler_settings), contentDescription = "Settings") }
+                    },
+                )
+                (vm.catalogue as? Catalogue.Ready)?.let { Filters(vm, it.studio.index) }
+            }
         },
     ) { padding ->
         when (val c = vm.catalogue) {
@@ -115,7 +120,7 @@ private fun Grid(vm: IconsViewModel, index: Index, padding: PaddingValues) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize().padding(padding),
     ) {
-        full("filters") { Filters(vm, index) }
+        if (vm.query.isBlank()) full("article") { ArticleCard { vm.open(Route.Article) } }
         section("Icons", shownIcons.size, icons.size, "The logo with an emblem for each service. Tap one for its sizes, colors and files.")
         items(shownIcons, key = { "icon-${it.name}" }) { IconTile(vm, it) }
         section("Status icons and badges", shownStatus.size, status.size, null)
@@ -150,9 +155,26 @@ private fun LazyGridScope.section(title: String, shown: Int, total: Int, about: 
     }
 }
 
+// Drawn with Math, the site's interactive article on SVG, opened in the app.
+@Composable
+private fun ArticleCard(onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).background(palette.Mantle)
+            .clickable(onClickLabel = "Open Drawn with Math", onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(R.drawable.ic_tabler_vector_bezier_2), contentDescription = null, Modifier.size(28.dp), tint = palette.AccentText)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Drawn with Math", style = MaterialTheme.typography.titleMedium, color = palette.Text)
+            Text("Why we like SVG: an interactive tour of how it works", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+        }
+    }
+}
+
 @Composable
 private fun Filters(vm: IconsViewModel, index: Index) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(
             value = vm.query,
             onValueChange = vm::search,
@@ -166,7 +188,10 @@ private fun Filters(vm: IconsViewModel, index: Index) {
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(),
         )
-        Segmented(listOf("color" to "Color", "dark" to "Dark", "light" to "Light"), vm.variant, Modifier.fillMaxWidth()) { vm.variant = it }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Segmented(listOf("color" to "Color", "auto" to "Auto", "dark" to "Dark", "light" to "Light"), vm.variant, Modifier.weight(1f)) { vm.variant = it }
+            SchemeToggle(vm)
+        }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             (listOf("all") + index.colors.categories.keys.filter { it != "neutral" }).forEach { cat ->
                 FilterChip(
@@ -183,14 +208,16 @@ private fun Filters(vm: IconsViewModel, index: Index) {
     }
 }
 
+// dark: the preview mode it is drawn in; badge: it shows a file that follows light or dark mode by itself.
 @Composable
-private fun Tile(svg: String?, variant: String, vm: IconsViewModel, name: String, title: String, faded: Boolean = false, onClick: () -> Unit) {
+private fun Tile(svg: String?, variant: String, vm: IconsViewModel, name: String, title: String, faded: Boolean = false, dark: Boolean = previewDark(vm), badge: Boolean = false, onClick: () -> Unit) {
     Column(
         Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = "Open $title", onClick = onClick).padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.fillMaxWidth().height(92.dp).swatch(variant, vm.previewBackground), contentAlignment = Alignment.Center) {
-            SvgImage(svg, 64.dp, null)
+        Box(Modifier.fillMaxWidth().height(92.dp).swatch(variant, vm.previewBackground, dark), contentAlignment = Alignment.Center) {
+            SvgImage(svg, 64.dp, null, light = !dark)
+            if (badge) AutoBadge(swatchIsLight(variant, vm.previewBackground, dark).not(), Modifier.align(Alignment.TopEnd))
         }
         Spacer(Modifier.height(4.dp))
         Text(name, style = MaterialTheme.typography.labelMedium, color = if (faded) palette.Subtext0 else palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -201,21 +228,29 @@ private fun Tile(svg: String?, variant: String, vm: IconsViewModel, name: String
 @Composable
 private fun IconTile(vm: IconsViewModel, e: IconEntry) {
     // an icon made in color only shows that one, on the color background
-    val variant = if (vm.variant in e.variants) vm.variant else "color"
+    val variant = when {
+        vm.variant == "auto" -> if (e.auto) "auto" else "color"
+        vm.variant in e.variants -> vm.variant
+        else -> "color"
+    }
     val svg by produceState<String?>(null, e.name, variant) { value = runCatching { vm.repo.svg("$variant/${e.name}.svg") }.getOrNull() }
-    Tile(svg, variant, vm, e.name.removePrefix("rootiest-"), e.title, faded = variant != vm.variant) { vm.open(Route.Detail(IconSubject(e))) }
+    Tile(svg, variant, vm, e.name.removePrefix("rootiest-"), e.title, faded = variant != vm.variant,
+        badge = variant == "auto" || (variant == "color" && e.name.endsWith("-auto"))) { vm.open(Route.Detail(IconSubject(e))) }
 }
 
 @Composable
 private fun EmblemTile(vm: IconsViewModel, e: EmblemEntry) {
     val variant = vm.variant
-    val svg by produceState<String?>(null, e.name, variant) {
+    // emblems have no auto files: Auto shows them white or black for the preview mode, as Dark and Light do
+    val dark = previewDark(vm)
+    val mono = if (variant == "auto") (if (dark) "dark" else "light") else variant
+    val svg by produceState<String?>(null, e.name, mono) {
         value = runCatching {
             val text = vm.repo.svg("emblems/${e.name}.svg")
-            if (variant == "color" || e.keepFill) text else MONO.getValue(variant).let { recolor(text, it.first, it.second) }
+            if (mono == "color" || e.keepFill) text else MONO.getValue(mono).let { recolor(text, it.first, it.second) }
         }.getOrNull()
     }
-    Tile(svg, variant, vm, e.name, e.title) { vm.open(Route.Detail(EmblemSubject(e))) }
+    Tile(svg, variant, vm, e.name, e.title, dark = dark) { vm.open(Route.Detail(EmblemSubject(e))) }
 }
 
 // An icon from another set, as its set draws it, in the text color; opens on the logo.
@@ -224,7 +259,8 @@ private fun OtherTile(vm: IconsViewModel, name: String) {
     val text = palette.Text
     val hex = "#%06x".format(0xFFFFFF and android.graphics.Color.argb(255, (text.red * 255).toInt(), (text.green * 255).toInt(), (text.blue * 255).toInt()))
     val svg = vm.other.bodies[name]?.replace("currentColor", hex)?.replaceFirst("<svg ", "<svg color=\"$hex\" fill=\"$hex\" ")
-    Tile(svg, "color", vm, name.substringAfter(':'), name.substringBefore(':')) {
+    // drawn in the app's text color, so on the app theme's background whatever the preview mode
+    Tile(svg, "color", vm, name.substringAfter(':'), name.substringBefore(':'), dark = palette === dev.rootiest.icons.ui.theme.Mocha) {
         vm.external("rootiest:$name")?.let { vm.open(Route.Detail(IconifySubject(it), mine = vm.ownLogo.logo != null)) }
     }
 }

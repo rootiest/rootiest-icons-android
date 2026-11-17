@@ -93,7 +93,7 @@ private fun Zone(vm: IconsViewModel, what: String, state: OwnState, about: Strin
             if (f == null) Text("Nothing loaded", color = palette.Subtext0)
             else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(64.dp).swatch("color", vm.previewBackground), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(64.dp).swatch("color", vm.previewBackground, palette === Mocha), contentAlignment = Alignment.Center) {
                         // the file as it is: what it leaves to currentColor or the default black shows in the swatch's text color
                         val tint = when (vm.previewBackground) {
                             PreviewBackground.Dark -> Mocha.Text
