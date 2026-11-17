@@ -155,7 +155,7 @@ GitHub (`rootiest/rootiest-icons-android`), and on demand. Results appear on Git
 
 A release is a signed APK on the
 [Gitea releases page](https://git.rootiest.dev/rootiest/rootiest-icons-android/releases), tagged `v<version>`, and the
-same version on Google Play's internal testing track.
+same version on Google Play's internal and closed testing tracks.
 
 1. Bump `appVersion` in `build.gradle.kts` through a pull request: minor for a feature, patch otherwise. The
    `versionCode` follows from it.
@@ -172,9 +172,11 @@ A phone cannot install an older version over a newer one, so a bad release is fi
 ### Google Play
 
 - `scripts/release.sh` leaves `rootiest-icons-<version>.aab` in `build/play/` and, after the Gitea release, releases
-  it to the `internal` track with `scripts/play-upload.py`, in one Play edit. If the upload fails, the Gitea release is
-  already out, and `release.sh` prints the command to retry it. `--dry-run` signs in and lists the tracks instead
-  (`play-upload.py --check`).
+  it to the `internal` (internal testing) and `alpha` (closed testing) tracks with `scripts/play-upload.py`, uploaded
+  once, in one Play edit. If the upload fails, the Gitea release is already out, and `release.sh` prints the command
+  to retry it. `--dry-run` signs in and lists the tracks instead (`play-upload.py --check`).
+- A version already on internal testing goes to closed testing on its own, with its notes, with
+  `scripts/play-upload.py --package dev.rootiest.icons --promote internal=alpha` (nothing is uploaded).
 - Its release notes list only the pull requests people notice in the app: `feat`, `fix` and `perf`, but not those
   scoped to `build`, `ci`, `deps` or `release`. They drop the type and number, spell names such as Iconify and SVG
   properly (the `play_names` list in `release.sh`), and are cut to Play's 500 characters.
@@ -194,7 +196,7 @@ A phone cannot install an older version over a newer one, so a bad release is fi
 | Script | What it does |
 |---|---|
 | `scripts/release.sh` | Builds and publishes a release (above) |
-| `scripts/play-upload.py` | Uploads app bundles to Google Play and releases them on a testing track |
+| `scripts/play-upload.py` | Uploads app bundles to Google Play and releases them on testing tracks, or promotes a release from one track to another |
 | `scripts/make-fixtures.py` | Writes `:core`'s test fixtures from rootiest-icons' own output |
 | `scripts/make-launcher.py` | Writes the launcher icon's drawables from rootiest-icons' `rootiest-icons` icon |
 | `scripts/tabler-drawable.py` | Turns Tabler Icons outlines into `ic_tabler_*.xml` drawables |
