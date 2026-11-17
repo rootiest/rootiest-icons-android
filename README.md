@@ -3,7 +3,9 @@
 Rootiest Icons for Android: the [icons.rootiest.fyi](https://icons.rootiest.fyi) catalogue and its Render panel as a
 native app. Browse the Rootiest logo, service icons, status icons and emblems; build any icon from another set
 (Tabler, Material, Simple Icons and some 200 more, through Iconify) or from an SVG of your own, on the Rootiest logo or
-on a logo of your own; and render any of it at any size, in any layout and color, to PNG, WebP, ICO or SVG.
+on a logo of your own; and render any of it at any size, in any layout and color, to PNG, WebP, ICO or SVG. Preview
+any icon in light or dark mode, save the auto versions that switch by themselves, and read Drawn with Math, the
+site's interactive tour of SVG, without leaving the app.
 
 It builds every icon exactly as the [command line tool](https://icons.rootiest.fyi/#render),
 `render-rootiest-icons`, does: the same placement, knockout, colors and file names, and each render shows the command

@@ -27,11 +27,13 @@ The app is [icons.rootiest.fyi](https://icons.rootiest.fyi) for a phone, with th
 
 | Screen | What it holds |
 |---|---|
-| **Catalogue** | Every icon, status icon and badge, and emblem, as tiles. The search box filters them and, from three letters, looks through the other sets as well (`cloud`, or `tabler:cloud` for one set). Color, Dark and Light switch the variant; the chips filter by category or status state. |
-| **Detail** | One icon or emblem: its preview, its details, the variant, the padded twin, and for an emblem whether it is on the logo or alone. With a logo of your own loaded, Rootiest logo or Your logo. Placement (upper right or badge, size, right, down), the five layouts side by side, and the Render panel. |
+| **Catalogue** | Every icon, status icon and badge, and emblem, as tiles. The search box filters them and, from three letters, looks through the other sets as well (`cloud`, or `tabler:cloud` for one set). Color, Auto, Dark and Light switch the variant; the chips filter by category or status state. The search box, the variant, the light/dark toggle and the chips stay at the top while the tiles scroll. A card at the top (with an empty search) and a button in the top bar open **Drawn with Math**. |
+| **Light and dark previews** | Auto shows each icon's `auto/` file: the dark and light versions in one SVG that switches with the viewer's mode (an icon without one shows its color version, faded; an emblem shows in white or black). A file that switches by itself (`auto/`, or an `-auto` icon such as `rootiest-id-auto`) has a small auto-brightness badge on its tile. The sun or moon button next to the variant previews every SVG that switches (the auto files, and the color icons, whose emblem takes a deeper shade in light mode) in light or dark mode, with a light or dark background to match; it starts as the app's appearance and keeps its choice for the session. |
+| **Detail** | One icon or emblem: its preview, its details, the variant, the padded twin, and for an emblem whether it is on the logo or alone. With a logo of your own loaded, Rootiest logo or Your logo. Placement (upper right or badge, size, right, down), the five layouts side by side, and the Render panel. The details say how it takes light or dark mode (it follows it, its emblem takes a deeper shade, or the same in both), and a preview that switches has the light/dark toggle in its corner. An icon with an auto file has an Auto variant: the published file only (no other logo or placement), and in place of the Render panel, Save and Share for the SVG (`<icon>-auto[-padded].svg`), since a raster cannot switch. An `-auto` icon says it is SVG only and points to its day and night versions for rasters. |
 | **Render panel** | The colors (a category, a status state, a brand's own, or any hex color, for the whole icon or per part), the layouts, any sizes up to 4096 px, PNG, WebP, ICO and SVG, and a background to flatten onto. Render draws every file; Save writes them to `Downloads/Rootiest Icons`, Share hands one file, or a zip of several, to another app. The command that writes the same files with `render-rootiest-icons` is shown and can be copied. |
 | **Your own** | A logo and an emblem of your own, each an SVG from a file or the clipboard, with Keep its colors. They are kept in the app's private storage and never leave the phone. An SVG shared to the app, or opened with it, becomes your emblem. |
-| **Settings** | Appearance (the phone's, light or dark), the preview background, refreshing the catalogue, and About: the version, links to the site, the command line tool, the status page (`status.rootiest.dev`), the source code and the privacy policy (`rootiest.com/privacy/icons-app`, the page the Google Play listing links), **Report an issue**, which opens a new support desk ticket (`support.rootiest.dev/new`, the desk's Android app topic) filled in with the app, Android and phone versions for the person to finish and send, and the open-source licenses. |
+| **Drawn with Math** | The site's interactive article on why SVG ([icons.rootiest.fyi/svg/](https://icons.rootiest.fyi/svg/)), in the app: the page in a WebView, light or dark as the app's appearance is. Its builder's downloads are saved to `Downloads/Rootiest Icons` and its Copy code goes to the clipboard. Back steps back through the page, then to the app; its links home return to the catalogue, other links open in the browser, and the top bar opens it in the browser too. |
+| **Settings** | Appearance (the phone's, light or dark), the preview background, refreshing the catalogue, and About: Drawn with Math, the version, links to the site, the command line tool, the status page (`status.rootiest.dev`), the source code and the privacy policy (`rootiest.com/privacy/icons-app`, the page the Google Play listing links), **Report an issue**, which opens a new support desk ticket (`support.rootiest.dev/new`, the desk's Android app topic) filled in with the app, Android and phone versions for the person to finish and send, and the open-source licenses. |
 
 What differs from the command line tool:
 
@@ -49,6 +51,8 @@ What differs from the command line tool:
   app opens offline with what it saw last.
 - **Published SVGs** are fetched from the same site by path (`color/rootiest-home.svg`, `emblems/home.svg`) the first
   time they are shown, and kept in the HTTP cache (64 MB).
+- **Drawn with Math** is the live page `https://icons.rootiest.fyi/svg/`, loaded by the WebView (and kept in its
+  cache), so it is always the site's current version.
 - **Icons from other sets** come from the Iconify API's data endpoint (`/<set>.json?icons=`), its search and its list
   of sets, trying the mirrors `index.json` names. Brand colors come from Simple Icons' data.
 - **Your own files** are read through Android's file picker, a share, or the clipboard.
@@ -74,7 +78,7 @@ Two Gradle modules:
 | `Builder.kt` | `placements`, `fit_logo`, `knockout_mask`, `compose`, `built_svg`, `emblem_svg` |
 | `Own.kt` | `own_text`, the generator's `clean` and `load_emblem`, `slug`, `placement_tag` |
 | `Iconify.kt` | `icon_data`, `icon_svg`, `external_name` |
-| `Files.kt` | `stem_of`, `planned`, `layouts_of`, `resolve`, `single_layout_svg`, and the ICO and zip writers |
+| `Files.kt` | `stem_of`, `planned`, `layouts_of`, `resolve`, `single_layout_svg`, the ICO and zip writers, and `schemeSvg`/`switches` (an SVG that switches with light or dark mode, fixed to one) |
 
 `:app` (`app/src/main/java/dev/rootiest/icons/`):
 
@@ -86,7 +90,7 @@ Two Gradle modules:
 | `render/Output.kt` | The files of a render; saving and sharing them |
 | `Studio.kt` | Turns a subject (an icon, an emblem, a name from another set, your file) and the screen's choices into the SVG, the file names and the command |
 | `IconsViewModel.kt` | The app's state: the catalogue, the search, your files, the stack of screens |
-| `ui/` | The screens (`CatalogueScreen`, `DetailScreen`, `RenderPanel`, `OwnScreen`, `SettingsScreen`, `LicensesScreen`), their shared pieces (`Components`) and the theme |
+| `ui/` | The screens (`CatalogueScreen`, `DetailScreen`, `RenderPanel`, `OwnScreen`, `SettingsScreen`, `LicensesScreen`, `ArticleScreen`), their shared pieces (`Components`) and the theme |
 
 A published icon is shown from its published file. It is built here instead, from its emblem and manifest row, as
 soon as it goes on your logo or is placed elsewhere, exactly when `render-rootiest-icons` builds it.
@@ -107,7 +111,10 @@ When rootiest-icons changes how it builds an icon, port the change to `:core`, t
 
 [AndroidSVG](https://bigbadaboom.github.io/androidsvg/) draws the SVGs, including the knockout masks and the CSS
 classes that color an icon. Before drawing, `rasterSvg()` keeps one layout (the one a browser would show at that
-size) and the dark-background shades, as the command line's rasters have. An emblem is measured by drawing it about
+size) and the dark-background shades, as the command line's rasters have. A preview first goes through
+`schemeSvg()`, which fixes an SVG that switches with light or dark mode (its `@media (prefers-color-scheme: light)`
+block) to the preview's mode: for light, the block's rules are written over the base rules they replace, so the
+drawing does not depend on how a renderer orders the cascade. An emblem is measured by drawing it about
 1000 px wide and reading the alpha, as the generator measures with rsvg-convert and ImageMagick.
 
 ## Files a render writes

@@ -135,7 +135,9 @@ class Studio(private val repo: Repo, val index: Index) {
                 subject, e.title, built?.first, built?.second ?: e.name, built?.second, e.name,
                 listOfNotNull("Name" to e.name, e.category?.let { "Category" to it + (e.state?.let { s -> " · $s" } ?: "") },
                     e.emblem?.let { "Emblem" to it }, if (e.layouts.isNotEmpty()) "Layouts" to "full, ${e.layouts.joinToString(", ")} px" else null),
-                variants = e.variants, problem = problem,
+                // auto/ after color: the dark and light versions in one file
+                variants = if (e.auto) e.variants.toMutableList().apply { add(indexOf("color") + 1, "auto") } else e.variants,
+                problem = problem,
             )
         }
         is EmblemSubject -> {
@@ -208,7 +210,8 @@ class Studio(private val repo: Repo, val index: Index) {
             stemBase = if (subject is EmblemSubject) subject.entry.name else s.stem
             args += s.cliName
             if (subject is EmblemSubject) args += "--emblem"
-        } else if (subject is IconSubject && (e == null || (logo == null && !c.placedElsewhere))) {
+        } else if (subject is IconSubject && (c.variant == "auto" || e == null || (logo == null && !c.placedElsewhere))) {
+            // auto/ files exist only as published, so Auto always shows the published icon
             text = repo.svg("${c.variant}/${if (c.padded) "padded/" else ""}${subject.entry.name}.svg")
             parts = subject.entry.parts
             stemBase = subject.entry.name

@@ -54,6 +54,33 @@ fun rasterSvg(text: String, layout: String, size: Int, small: List<Int>): String
     return one.replaceFirst(Regex("@media \\(prefers-color-scheme: light\\)\\{(?:\\.[\\w-]+\\{[^}]*\\})*\\}"), "")
 }
 
+// The light-mode block an icon's colors switch with (auto/ files, -auto icons, most color icons' emblem shade).
+private val LIGHT_BLOCK = Regex("@media \\(prefers-color-scheme: light\\)\\{((?:[^{}]*\\{[^{}]*\\})*)\\}")
+
+// Whether an SVG switches its colors with the viewer's light or dark mode.
+fun switches(text: String): Boolean = LIGHT_BLOCK.containsMatchIn(text)
+
+// An SVG fixed to one mode: the light-mode block removed, and for light its rules written over the base rules they
+// replace (not left to the cascade), so any renderer draws that mode. Text that does not switch is returned as it is.
+fun schemeSvg(text: String, light: Boolean): String =
+    Regex("(<style[^>]*>)([\\s\\S]*?)(</style>)").replace(text) { style ->
+        val css = style.groupValues[2]
+        val block = LIGHT_BLOCK.find(css) ?: return@replace style.value
+        // the block's place held by a mark, for a rule only light mode has
+        var out = css.replaceRange(block.range, "\u0000")
+        var added = ""
+        if (light) {
+            for (rule in Regex("([^{}]+)\\{([^{}]*)\\}").findAll(block.groupValues[1])) {
+                val sel = rule.groupValues[1].trim()
+                val body = rule.groupValues[2]
+                val base = Regex("(^|[}\\s])${Regex.escape(sel)}\\{[^{}]*\\}")
+                val at = base.find(out)
+                if (at != null) out = out.replaceRange(at.range, at.groupValues[1] + "$sel{$body}") else added += "$sel{$body}"
+            }
+        }
+        style.groupValues[1] + out.replace("\u0000", added) + style.groupValues[3]
+    }
+
 // A named file's bytes.
 class NamedBytes(val name: String, val bytes: ByteArray)
 

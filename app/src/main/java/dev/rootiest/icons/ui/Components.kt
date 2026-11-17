@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
@@ -37,16 +39,19 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.rootiest.icons.IconsViewModel
+import dev.rootiest.icons.R
 import dev.rootiest.icons.core.layoutsOf
 import dev.rootiest.icons.core.rasterSvg
+import dev.rootiest.icons.core.schemeSvg
 import dev.rootiest.icons.data.PreviewBackground
 import dev.rootiest.icons.render.Svg
 import dev.rootiest.icons.ui.theme.Latte
@@ -63,15 +68,17 @@ private val drawn = object : LruCache<String, ImageBitmap>(48 * 1024 * 1024) {
 }
 
 // An SVG at a size, in the layout a browser would show at that size (the emblem grows as the icon shrinks).
-// layout: "auto", or one layout at any size.
+// layout: "auto", or one layout at any size. light: an SVG that switches with light or dark mode is drawn in light
+// mode's colors (true) or dark mode's (false, as the rasters a render writes); null leaves that to rasterSvg (dark).
 @Composable
-internal fun SvgImage(svg: String?, size: Dp, description: String?, modifier: Modifier = Modifier, layout: String = "auto", tint: Color? = null) {
+internal fun SvgImage(svg: String?, size: Dp, description: String?, modifier: Modifier = Modifier, layout: String = "auto", tint: Color? = null, light: Boolean? = null) {
     val px = with(LocalDensity.current) { size.roundToPx() }
-    val bitmap by produceState<ImageBitmap?>(null, svg, px, layout, tint) {
+    val bitmap by produceState<ImageBitmap?>(null, svg, px, layout, tint, light) {
         value = svg?.let { text ->
-            val key = "${text.hashCode()}-${text.length}-$px-$layout-${tint?.toArgb()}"
+            val key = "${text.hashCode()}-${text.length}-$px-$layout-${tint?.toArgb()}-$light"
             drawn.get(key) ?: withContext(Dispatchers.Default) {
-                runCatching { Svg.rasterize(rasterSvg(text, layout, size.value.toInt(), layoutsOf(text)), px, tint = tint?.toArgb()).asImageBitmap() }.getOrNull()
+                val fixed = if (light != null) schemeSvg(text, light) else text
+                runCatching { Svg.rasterize(rasterSvg(fixed, layout, size.value.toInt(), layoutsOf(fixed)), px, tint = tint?.toArgb()).asImageBitmap() }.getOrNull()
             }?.also { drawn.put(key, it) }
         }
     }
@@ -80,19 +87,31 @@ internal fun SvgImage(svg: String?, size: Dp, description: String?, modifier: Mo
     }
 }
 
-// What a preview is drawn on, as the homepage: the variant's own background, or the one chosen in Settings.
+// Whether previews that switch with light or dark mode are drawn dark: the toggle's choice, or the app's theme.
 @Composable
-internal fun Modifier.swatch(variant: String, background: PreviewBackground): Modifier {
-    val color = when (background) {
-        PreviewBackground.Dark -> Mocha.Base
-        PreviewBackground.Light -> Color.White
-        PreviewBackground.Checker -> null
-        PreviewBackground.Auto -> when (variant) {
-            "dark" -> Mocha.Base
-            "light" -> Color.White
-            else -> palette.Mantle
-        }
+internal fun previewDark(vm: IconsViewModel): Boolean = vm.previewDark ?: (palette === Mocha)
+
+// What a preview is drawn on, as the homepage: the variant's own background, or the one chosen in Settings. Auto and
+// color previews follow the light or dark preview mode (dark: whether it is dark).
+internal fun swatchColor(variant: String, background: PreviewBackground, dark: Boolean): Color? = when (background) {
+    PreviewBackground.Dark -> Mocha.Base
+    PreviewBackground.Light -> Color.White
+    PreviewBackground.Checker -> null
+    PreviewBackground.Auto -> when (variant) {
+        "dark" -> Mocha.Base
+        "light" -> Color.White
+        "auto" -> if (dark) Mocha.Base else Color.White
+        else -> if (dark) Mocha.Mantle else Latte.Mantle
     }
+}
+
+// Whether a swatch is light (the checkerboard is), for text drawn on it.
+internal fun swatchIsLight(variant: String, background: PreviewBackground, dark: Boolean): Boolean =
+    swatchColor(variant, background, dark)?.let { it == Color.White || it == Latte.Mantle } ?: true
+
+@Composable
+internal fun Modifier.swatch(variant: String, background: PreviewBackground, dark: Boolean): Modifier {
+    val color = swatchColor(variant, background, dark)
     val shape = RoundedCornerShape(10.dp)
     if (color != null) return clip(shape).background(color)
     val a = Latte.Surface0
@@ -111,6 +130,29 @@ internal fun Modifier.swatch(variant: String, background: PreviewBackground): Mo
             y += cell
             row++
         }
+    }
+}
+
+// The light or dark preview toggle: a sun while previewing light, a moon while previewing dark.
+@Composable
+internal fun SchemeToggle(vm: IconsViewModel, modifier: Modifier = Modifier, onSwatch: Boolean = false) {
+    val dark = previewDark(vm)
+    val tint = if (!onSwatch) palette.Subtext0 else if (dark) Mocha.Subtext0 else Latte.Subtext0
+    IconButton(onClick = { vm.togglePreview(dark) }, modifier) {
+        Icon(
+            painterResource(if (dark) R.drawable.ic_tabler_moon else R.drawable.ic_tabler_sun),
+            contentDescription = if (dark) "Previewing in dark mode: show light" else "Previewing in light mode: show dark",
+            Modifier.size(22.dp), tint = tint,
+        )
+    }
+}
+
+// The mark on a preview of a file that follows light or dark mode by itself (auto/, -auto).
+@Composable
+internal fun AutoBadge(dark: Boolean, modifier: Modifier = Modifier) {
+    Box(modifier.padding(4.dp).clip(CircleShape).background(if (dark) Mocha.Surface0 else Latte.Surface0).padding(3.dp)) {
+        Icon(painterResource(R.drawable.ic_tabler_brightness_auto), contentDescription = "Follows light or dark mode",
+            Modifier.size(14.dp), tint = if (dark) Mocha.Text else Latte.Text)
     }
 }
 

@@ -26,6 +26,7 @@ sealed interface Route {
     data object Own : Route
     data object Settings : Route
     data object Licenses : Route
+    data object Article : Route
 }
 
 // The catalogue: loading, failed (why), or ready to build from.
@@ -64,6 +65,15 @@ class IconsViewModel(app: Application) : AndroidViewModel(app) {
     var category by mutableStateOf("all")
     var other by mutableStateOf(OtherSets())
         private set
+
+    // How previews that switch with light or dark mode are drawn: dark (true) or light; null follows the app's theme
+    // until the toggle sets it. Kept for the session only.
+    var previewDark by mutableStateOf<Boolean?>(null)
+        private set
+
+    fun togglePreview(dark: Boolean) {
+        previewDark = !dark
+    }
 
     val stack = mutableStateListOf<Route>(Route.Catalogue)
     private var searching: Job? = null
