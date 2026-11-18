@@ -80,18 +80,12 @@ import kotlinx.coroutines.withContext
 
 private fun parseColor(hex: String) = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
 
-// Everything render-rootiest-icons makes, made here: the colors, the layouts, any sizes, PNG, WebP, ICO and SVG, and
-// a background to flatten onto. The files are named as the command names them, and the command is shown.
-@OptIn(ExperimentalLayoutApi::class)
+// The choices' animation, with a morph's target drawn (null until it is), whether this icon can morph here, and the
+// icons it can morph into.
+internal data class Moving(val animation: Animation, val morphable: Boolean, val targets: List<String>)
+
 @Composable
-internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, change: (Choices) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val colors = (vm.catalogue as dev.rootiest.icons.Catalogue.Ready).studio.index.colors
-    val small = d.small
-    var sizesText by remember(s) { mutableStateOf(c.sizes.joinToString(", ")) }
-    var durationText by remember(s) { mutableStateOf(c.duration?.let { fmtG(it) } ?: "") }
-    val durationOk = durationText.isBlank() || durationText.trim().toDoubleOrNull()?.let { it in 0.2..60.0 } == true
+internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices): Moving {
     val studio = (vm.catalogue as dev.rootiest.icons.Catalogue.Ready).studio
     // Morphing here: a published icon or emblem, as published, into another of the same kind (render-icon.py builds
     // the target as the icon is built; here that is the published file, in this variant and these colors).
@@ -116,7 +110,23 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
         }.getOrNull()
     }
     val looping = c.animate == "draw" || c.animate == "morph"
-    val animation = Animation(c.animate, c.loop && looping, c.duration, c.morphTo.takeIf { c.animate == "morph" }, target)
+    return Moving(Animation(c.animate, c.loop && looping, c.duration, c.morphTo.takeIf { c.animate == "morph" }, target), morphable, targets)
+}
+
+// Everything render-rootiest-icons makes, made here: the colors, the layouts, any sizes, PNG, WebP, ICO, SVG and GIF,
+// an animation, and a background to flatten onto. The files are named as the command names them, and the command is shown.
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, moving: Moving, change: (Choices) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val colors = (vm.catalogue as dev.rootiest.icons.Catalogue.Ready).studio.index.colors
+    val small = d.small
+    var sizesText by remember(s) { mutableStateOf(c.sizes.joinToString(", ")) }
+    var durationText by remember(s) { mutableStateOf(c.duration?.let { fmtG(it) } ?: "") }
+    val durationOk = durationText.isBlank() || durationText.trim().toDoubleOrNull()?.let { it in 0.2..60.0 } == true
+    val (animation, morphable, targets) = moving
+    val looping = c.animate == "draw" || c.animate == "morph"
     var results by remember(d.text, c) { mutableStateOf<List<Rendered>?>(null) }
     var busy by remember { mutableStateOf(false) }
     val stem = stemOf(d.stemBase, d.isEmblem, c.variant, c.padded && !d.isEmblem, d.shown ?: dev.rootiest.icons.core.ColorOptions())
@@ -131,7 +141,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
         c.animate != "none" && c.formats.none { it in setOf("svg", "webp", "gif") } -> "Animation plays in the SVG, WebP and GIF: pick one of them."
         c.animate == "morph" && !morphable -> "Morphing here works on the published icons and emblems as published; use the command line for this one."
         c.animate == "morph" && c.morphTo == null -> "Pick an icon to morph into."
-        c.animate == "morph" && target == null -> "Getting ${c.morphTo}…"
+        c.animate == "morph" && animation.target == null -> "Getting ${c.morphTo}…"
         !durationOk -> "A duration is a number of seconds from 0.2 to 60."
         else -> null
     }
@@ -304,7 +314,9 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Box(Modifier.size(104.dp).swatch(c.variant, vm.previewBackground, previewDark(vm)), contentAlignment = Alignment.Center) {
-                                r.preview?.let { Image(it.asImageBitmap(), contentDescription = r.file.name, Modifier.size(minOf(it.width, 96).dp)) }
+                                val side = minOf(r.preview?.width ?: 96, 96).dp
+                                if (r.animated != null) AnimatedImage(r.animated, side, r.file.name)
+                                else r.preview?.let { Image(it.asImageBitmap(), contentDescription = r.file.name, Modifier.size(side)) }
                             }
                             Text(r.file.name, style = MaterialTheme.typography.labelSmall, maxLines = 3)
                             Text(kb(r.file.bytes.size), style = MaterialTheme.typography.labelSmall, color = palette.Subtext0)
