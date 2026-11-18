@@ -15,6 +15,45 @@ const val FPS = 25
 
 private val NUM = Regex("[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?")
 private val ELEMENT = Regex("<(/?)([a-zA-Z][\\w:-]*)((?:\\s[^<>]*?)?)(/?)>")
+private val SPACE = Regex("\\s+")
+private val HEX = Regex("#[0-9a-fA-F]{6}")
+private val RULE = Regex("([^{}]+)\\{([^{}]*)\\}")
+private val ANIMATION_STYLE = Regex("\\s*<style id=\"animation\"[^>]*>([\\s\\S]*?)</style>")
+private val SMIL_PATH = Regex("(<path\\b[^>]*?)\\sd=\"[^\"]*\"([^>]*)>\\s*<animate attributeName=\"d\"([^>]*)/>\\s*</path>")
+private val SHINE_FILTER = Regex("<g filter=\"url\\(#shine-white\\)\">")
+private val G_TAG = Regex("<(/?)g\\b[^<>]*?(/?)>")
+
+// What stays the same from frame to frame, worked out once: an animation's frames all come from one SVG, so each
+// path's length, each group's drawn box and each animated path's numbers are kept here (the most recent ones).
+private class Memo<K, V>(private val max: Int) {
+    private val map = object : LinkedHashMap<K, V>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>?) = size > max
+    }
+
+    @Synchronized
+    fun get(key: K, make: () -> V): V = map[key] ?: make().also { map[key] = it }
+}
+
+private val lengths = Memo<String, Double>(512)
+private val boxes = Memo<String, List<Double>?>(64)
+
+// A value's numbers, and the text around them: n numbers between n + 1 pieces.
+private class Numbers(val pieces: List<String>, val values: DoubleArray)
+
+private val numbered = Memo<String, Numbers>(256)
+
+private fun numbersOf(v: String) = numbered.get(v) {
+    val pieces = ArrayList<String>()
+    val values = ArrayList<Double>()
+    var at = 0
+    for (m in NUM.findAll(v)) {
+        pieces += v.substring(at, m.range.first)
+        values += m.value.toDouble()
+        at = m.range.last + 1
+    }
+    pieces += v.substring(at)
+    Numbers(pieces, values.toDoubleArray())
+}
 private val EASE = mapOf(
     "ease" to listOf(0.25, 0.1, 0.25, 1.0), "ease-in" to listOf(0.42, 0.0, 1.0, 1.0),
     "ease-out" to listOf(0.0, 0.0, 0.58, 1.0), "ease-in-out" to listOf(0.42, 0.0, 0.58, 1.0),
@@ -36,20 +75,37 @@ private fun eased(timing: List<Double>?, f: Double): Double {
 private fun timingOf(name: String): List<Double>? =
     if (name.startsWith("cubic-bezier")) NUM.findAll(name).map { it.value.toDouble() }.toList() else EASE[name]
 
+// A number between two keyframes', to 4 decimals: only drawn, never compared with the command line's text, and far
+// quicker than fmtG (an animated path has hundreds a frame).
+private fun quick(x: Double): String {
+    if (x.isNaN() || kotlin.math.abs(x) >= 1e14) return fmtG(x)
+    val r = Math.round(x * 10000)
+    if (r == 0L) return "0"
+    val a = kotlin.math.abs(r)
+    val whole = a / 10000
+    val frac = a % 10000
+    val sign = if (r < 0) "-" else ""
+    if (frac == 0L) return "$sign$whole"
+    return "$sign$whole." + frac.toString().padStart(4, '0').trimEnd('0')
+}
+
 private fun mixed(v0: String, v1: String, f: Double): String {
-    val hex = Regex("#[0-9a-fA-F]{6}")
-    if (hex.matches(v0) && hex.matches(v1)) {
+    if (v0.length == 7 && v1.length == 7 && HEX.matches(v0) && HEX.matches(v1)) {
         return "#" + (1..5 step 2).joinToString("") { i ->
             val a = v0.substring(i, i + 2).toInt(16)
             val b = v1.substring(i, i + 2).toInt(16)
             "%02x".format(pyRound(a + (b - a) * f))
         }
     }
-    val n0 = NUM.findAll(v0).map { it.value.toDouble() }.toList()
-    val n1 = NUM.findAll(v1).map { it.value.toDouble() }.toList()
-    if (n0.isNotEmpty() && n0.size == n1.size) {
-        val vals = n0.zip(n1).map { (a, b) -> fmtG(a + (b - a) * f) }.iterator()
-        return NUM.replace(v0) { vals.next() }
+    val n0 = numbersOf(v0)
+    val n1 = numbersOf(v1)
+    if (n0.values.isNotEmpty() && n0.values.size == n1.values.size) {
+        val out = StringBuilder(v0.length + 16)
+        for (i in n0.values.indices) {
+            val a = n0.values[i]
+            out.append(n0.pieces[i]).append(quick(a + (n1.values[i] - a) * f))
+        }
+        return out.append(n0.pieces.last()).toString()
     }
     return if (f < 0.5) v0 else v1
 }
@@ -58,8 +114,9 @@ private class Rule(val selectors: List<String>, val decls: Map<String, String>)
 
 private fun decls(text: String) = text.split(";").filter { ":" in it }.associate { it.substringBefore(":").trim() to it.substringAfter(":").trim() }
 
-// The stylesheet's plain rules and its keyframes (@media blocks left out).
-private fun stylesheet(css: String): Pair<List<Rule>, Map<String, List<Pair<Double, Map<String, String>>>>> {
+// The stylesheet's plain rules and its keyframes. @media blocks are left out, but for light the light-mode block's
+// rules are read in their place, over the rules before them, as a browser in light mode reads them.
+private fun stylesheet(css: String, light: Boolean = false): Pair<List<Rule>, Map<String, List<Pair<Double, Map<String, String>>>>> {
     val rules = ArrayList<Rule>()
     val frames = HashMap<String, List<Pair<Double, Map<String, String>>>>()
     var i = 0
@@ -75,11 +132,13 @@ private fun stylesheet(css: String): Pair<List<Rule>, Map<String, List<Pair<Doub
         }
         val inner = css.substring(j + 1, k - 1)
         if (head.startsWith("@keyframes")) {
-            frames[head.split(Regex("\\s+"))[1]] = Regex("([^{}]+)\\{([^{}]*)\\}").findAll(inner).flatMap { m ->
+            frames[head.split(SPACE)[1]] = RULE.findAll(inner).flatMap { m ->
                 m.groupValues[1].split(",").map { it.trim().removeSuffix("%").toDouble() to decls(m.groupValues[2]) }
             }.sortedBy { it.first }.toList()
         } else if (!head.startsWith("@")) {
             rules += Rule(head.split(",").map { it.trim() }, decls(inner))
+        } else if (light && head == "@media (prefers-color-scheme: light)") {
+            rules += stylesheet(inner).first
         }
         i = k
     }
@@ -102,8 +161,10 @@ private fun splitTop(value: String): List<String> {
 }
 
 // {selector: {property: value}} of a stylesheet's animations at t seconds, and its plain rules without animations.
-private fun animatedValues(css: String, t: Double): Pair<Map<String, Map<String, String>>, String> {
-    val (rules, frames) = stylesheet(css)
+private val sheets = Memo<String, Pair<List<Rule>, Map<String, List<Pair<Double, Map<String, String>>>>>>(8)
+
+private fun animatedValues(css: String, t: Double, light: Boolean): Pair<Map<String, Map<String, String>>, String> {
+    val (rules, frames) = sheets.get("$light $css") { stylesheet(css, light) }
     val anims = HashMap<String, MutableList<MutableList<String>>>()
     val base = HashMap<String, MutableMap<String, String>>()
     val plain = StringBuilder()
@@ -112,7 +173,7 @@ private fun animatedValues(css: String, t: Double): Pair<Map<String, Map<String,
         if (still.isNotEmpty()) plain.append(r.selectors.joinToString(",") + "{" + still.entries.joinToString(";") { "${it.key}:${it.value}" } + "}")
         for (s in r.selectors) {
             base.getOrPut(s) { HashMap() }.putAll(still)
-            r.decls["animation"]?.let { anims[s] = splitTop(it).map { a -> a.split(Regex("\\s+")).toMutableList() }.toMutableList() }
+            r.decls["animation"]?.let { anims[s] = splitTop(it).map { a -> a.split(SPACE).toMutableList() }.toMutableList() }
             r.decls["animation-name"]?.let { names -> anims[s]?.zip(splitTop(names))?.forEach { (a, n) -> a[0] = n } }
         }
     }
@@ -197,26 +258,38 @@ private fun pathLength(name: String, attrs: String): Double {
     return total
 }
 
+// An animated path's <animate>, read: its values, key times, splines and timing.
+private class Smil(val values: List<String>, val keys: List<Double>, val splines: List<List<Double>>, val dur: Double, val forever: Boolean, val spline: Boolean)
+
+private val smils = Memo<String, Smil>(64)
+
 private fun smilD(attrs: String, t: Double): String {
-    val values = (getAttr(attrs, "values") ?: "").split(";")
-    val dur = (getAttr(attrs, "dur") ?: "1s").removeSuffix("s").toDouble()
-    val keys = getAttr(attrs, "keyTimes")?.split(";")?.map { it.toDouble() } ?: values.indices.map { it.toDouble() / (values.size - 1) }
-    val splines = (getAttr(attrs, "keySplines") ?: "").split(";").filter { it.isNotBlank() }
-        .map { s -> s.trim().split(Regex("\\s+")).map(String::toDouble) }
-    val p = if (getAttr(attrs, "repeatCount") == "indefinite") (t % dur) / dur else min(t / dur, 1.0)
+    val a = smils.get(attrs) {
+        val values = (getAttr(attrs, "values") ?: "").split(";")
+        Smil(
+            values,
+            getAttr(attrs, "keyTimes")?.split(";")?.map { it.toDouble() } ?: values.indices.map { it.toDouble() / (values.size - 1) },
+            (getAttr(attrs, "keySplines") ?: "").split(";").filter { it.isNotBlank() }.map { s -> s.trim().split(SPACE).map(String::toDouble) },
+            (getAttr(attrs, "dur") ?: "1s").removeSuffix("s").toDouble(),
+            getAttr(attrs, "repeatCount") == "indefinite",
+            getAttr(attrs, "calcMode") == "spline",
+        )
+    }
+    val p = if (a.forever) (t % a.dur) / a.dur else min(t / a.dur, 1.0)
+    val keys = a.keys
     for (i in 0 until keys.size - 1) {
         if (p in keys[i]..keys[i + 1]) {
             var f = if (keys[i + 1] > keys[i]) (p - keys[i]) / (keys[i + 1] - keys[i]) else 1.0
-            if (getAttr(attrs, "calcMode") == "spline" && i < splines.size) f = eased(splines[i], f)
-            return mixed(values[i], values[i + 1], f)
+            if (a.spline && i < a.splines.size) f = eased(a.splines[i], f)
+            return mixed(a.values[i], a.values[i + 1], f)
         }
     }
-    return values.last()
+    return a.values.last()
 }
 
 // Which simple selectors (".a" or ".a .b") an element matches, from its classes and its ancestors'.
 private fun matches(selector: String, own: Set<String>, above: Set<String>): Boolean {
-    val parts = selector.trim().split(Regex("\\s+")).map { it.removePrefix(".") }
+    val parts = selector.trim().split(SPACE).map { it.removePrefix(".") }
     return when (parts.size) {
         1 -> parts[0] in own
         2 -> parts[1] in own && parts[0] in above
@@ -224,17 +297,18 @@ private fun matches(selector: String, own: Set<String>, above: Set<String>): Boo
     }
 }
 
-// The SVG still, at t seconds of its animation, for AndroidSVG.
-fun frameSvg(svgText: String, t: Double): String {
-    val style = Regex("\\s*<style id=\"animation\"[^>]*>([\\s\\S]*?)</style>").find(svgText)
-    val (values, plain) = if (style != null) animatedValues(style.groupValues[1], t) else emptyMap<String, Map<String, String>>() to ""
+// The SVG still, at t seconds of its animation, for AndroidSVG: as a viewer in dark mode sees it (the rasters' colors),
+// or with light, in light mode (a preview; its other styles are fixed to light mode by schemeSvg).
+fun frameSvg(svgText: String, t: Double, light: Boolean = false): String {
+    val style = ANIMATION_STYLE.find(svgText)
+    val (values, plain) = if (style != null) animatedValues(style.groupValues[1], t, light) else emptyMap<String, Map<String, String>>() to ""
     var text = if (style != null) svgText.replaceRange(style.range, "\n  <style id=\"animation\" type=\"text/css\">$plain</style>") else svgText
     // a morph's path (any path data SMIL animates): its shape at t
-    text = Regex("(<path\\b[^>]*?)\\sd=\"[^\"]*\"([^>]*)>\\s*<animate attributeName=\"d\"([^>]*)/>\\s*</path>").replace(text) {
+    text = SMIL_PATH.replace(text) {
         "${it.groupValues[1]} d=\"${smilD(it.groupValues[3], t)}\"${it.groupValues[2]}/>"
     }
     // shine's copy: white, as its filter would make it
-    text = Regex("<g filter=\"url\\(#shine-white\\)\">").replace(text, "<g class=\"shine-copy\">")
+    text = SHINE_FILTER.replace(text, "<g class=\"shine-copy\">")
     val motion = values[".motion"]?.get("transform")
     val bands = listOf("sweep-band", "shine-band").associateWith { values[".$it"]?.get("transform") }
     // Walk the elements: classes in force, and each element's values.
@@ -251,7 +325,7 @@ fun frameSvg(svgText: String, t: Double): String {
             continue
         }
         var attrs = attrs0
-        val own = (getAttr(attrs, "class") ?: "").split(Regex("\\s+")).filter(String::isNotEmpty).toSet()
+        val own = (getAttr(attrs, "class") ?: "").split(SPACE).filter(String::isNotEmpty).toSet()
         val above = classes.flatten().toSet()
         val props = LinkedHashMap<String, String>()
         for ((sel, vs) in values) if (matches(sel, own, above)) props.putAll(vs)
@@ -264,7 +338,7 @@ fun frameSvg(svgText: String, t: Double): String {
         val offset = props.remove("stroke-dashoffset")
         props.remove("transform")
         if (dash != null && dash != "none" && name in setOf("path", "circle", "ellipse", "rect", "polygon", "polyline", "line")) {
-            val len = pathLength(name, attrs)
+            val len = lengths.get("$name $attrs0") { pathLength(name, attrs0) }
             val off = offset?.let { NUM.find(it)?.value?.toDouble() } ?: 0.0
             props["stroke-dasharray"] = "${fmtG(len)} ${fmtG(len)}"
             props["stroke-dashoffset"] = fmtG(off * len)
@@ -281,12 +355,13 @@ fun frameSvg(svgText: String, t: Double): String {
             // the group's contents: to its own closing tag
             var depth = 1
             var end = text.length
-            for (g in Regex("<(/?)g\\b[^<>]*?(/?)>").findAll(text, m.range.last + 1)) {
+            for (g in G_TAG.findAll(text, m.range.last + 1)) {
                 if (g.groupValues[2].isNotEmpty()) continue
                 depth += if (g.groupValues[1].isNotEmpty()) -1 else 1
                 if (depth == 0) { end = g.range.first; break }
             }
-            drawnBox(text.substring(m.range.last + 1, end))?.let { (x0, y0, x1, y1) ->
+            val inner = text.substring(m.range.last + 1, end)
+            boxes.get(inner) { drawnBox(inner) }?.let { (x0, y0, x1, y1) ->
                 val cx = (x0 + x1) / 2
                 val cy = (y0 + y1) / 2
                 val fn = motion.substringBefore("(")

@@ -142,9 +142,13 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
         value = runCatching { studio.draw(s, c, logo, vm.ownEmblem.file) }
     }
     val d = drawn?.getOrNull()
+    val moving = rememberMoving(vm, s, c)
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.fillMaxWidth().height(240.dp).swatch(c.variant, vm.previewBackground, dark), contentAlignment = Alignment.Center) {
-            if (d != null) SvgImage(d.text, 192.dp, "${s.title}, ${c.variant}, ${if (dark) "dark" else "light"} mode", light = !dark)
+            val about = "${s.title}, ${c.variant}, ${if (dark) "dark" else "light"} mode"
+            // the chosen animation plays here, as the files will have it (a morph once its target is drawn)
+            if (d != null && !auto && moving.animation.moves) AnimatedSvgImage(d.text, moving.animation, 192.dp, about, light = !dark)
+            else if (d != null) SvgImage(d.text, 192.dp, about, light = !dark)
             else drawn?.exceptionOrNull()?.let { Text(it.message ?: "It cannot be drawn", color = palette.Red, modifier = Modifier.padding(16.dp)) }
             if (d != null && switches(d.text)) {
                 Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
@@ -218,7 +222,7 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
         if (d != null && auto) AutoFile(s, c, d.text)
         else if (d != null) {
             if (autoFile) Note(SVG_ONLY_COLOR, Modifier)
-            RenderPanel(vm, s, d, c) { c = it }
+            RenderPanel(vm, s, d, c, moving) { c = it }
         }
         Box(Modifier.height(24.dp))
     }
