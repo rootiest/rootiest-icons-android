@@ -17,12 +17,12 @@ private val TAG = Regex("<([a-zA-Z][\\w:-]*)(\\s[^<>]*?)?(/?)>")
 
 private fun stripSemi(t: String) = t.trim(';')
 
-private fun getAttr(attrs: String, name: String): String? {
+internal fun getAttr(attrs: String, name: String): String? {
     val m = Regex("\\s$name=(\"([^\"]*)\"|'([^']*)')").find(attrs) ?: return null
     return m.groups[2]?.value ?: m.groups[3]?.value
 }
 
-private fun setAttr(attrs: String, name: String, value: String): String {
+internal fun setAttr(attrs: String, name: String, value: String): String {
     val m = Regex("(\\s$name=)(\"[^\"]*\"|'[^']*')").find(attrs) ?: return "$attrs $name=\"$value\""
     return attrs.replaceRange(m.range, "${m.groupValues[1]}\"$value\"")
 }

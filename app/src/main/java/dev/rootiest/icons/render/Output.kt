@@ -9,6 +9,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import dev.rootiest.icons.core.NamedBytes
+import dev.rootiest.icons.core.animateSvg
+import dev.rootiest.icons.core.animationTag
 import dev.rootiest.icons.core.icoBytes
 import dev.rootiest.icons.core.rasterSvg
 import dev.rootiest.icons.core.singleLayoutSvg
@@ -29,15 +31,24 @@ private fun Bitmap.bytes(format: Bitmap.CompressFormat) = ByteArrayOutputStream(
 @Suppress("DEPRECATION")
 private val WEBP = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSLESS else Bitmap.CompressFormat.WEBP
 
-// Every file of a render, as render-rootiest-icons writes them: per layout an SVG, a PNG and a WebP per size, and one
-// .ico holding every size.
-fun renderFiles(text: String, stem: String, small: List<Int>, layouts: List<String>, sizes: List<Int>, formats: List<String>, background: Int?): List<Rendered> {
+// An SVG's animation (render-icon.py --animate): none, draw or heartbeat, looping (draw), and seconds (null: default).
+data class Animation(val animate: String = "none", val loop: Boolean = false, val duration: Double? = null) {
+    val tag get() = animationTag(animate, loop, duration)
+}
+
+// Every file of a render, as render-rootiest-icons writes them: per layout an SVG (animated, if asked), a PNG and a WebP
+// per size, and one .ico holding every size.
+fun renderFiles(
+    text: String, stem: String, small: List<Int>, layouts: List<String>, sizes: List<Int>, formats: List<String>, background: Int?,
+    animation: Animation = Animation(),
+): List<Rendered> {
     val out = ArrayList<Rendered>()
     for (lay in layouts) {
         val name = stem + if (lay == "auto") "" else "-layout-$lay"
         if ("svg" in formats) {
-            val svg = if (lay == "auto" || small.isEmpty()) text else singleLayoutSvg(text, lay)
-            out += Rendered(NamedBytes("$name.svg", svg.toByteArray()), Svg.rasterize(rasterSvg(text, lay, 192, small), 192))
+            val one = if (lay == "auto" || small.isEmpty()) text else singleLayoutSvg(text, lay)
+            val svg = animateSvg(one, animation.animate, animation.duration, animation.loop)
+            out += Rendered(NamedBytes("$name${animation.tag}.svg", svg.toByteArray()), Svg.rasterize(rasterSvg(text, lay, 192, small), 192))
         }
         if (formats.none { it != "svg" }) continue
         val pngs = ArrayList<Pair<Int, ByteArray>>()

@@ -78,6 +78,9 @@ data class Choices(
     val sizes: List<Int> = listOf(256),
     val formats: List<String> = listOf("png"),
     val background: String? = null,
+    val animate: String = "none", // render-icon.py --animate: none, draw or heartbeat, for the SVG
+    val loop: Boolean = false, // --loop, for draw
+    val duration: Double? = null, // --duration in seconds; null: the animation's default
 ) {
     val placedElsewhere get() = preset != "rootiest" || scale != null || x != 0.0 || y != 0.0
 }
@@ -266,6 +269,11 @@ fun commandLine(d: Drawn, c: Choices): String {
     if (c.layouts != listOf("auto")) args += listOf("--layout", c.layouts.joinToString(","))
     args += listOf("--size", c.sizes.joinToString(","))
     if (c.formats != listOf("png")) args += listOf("--format", c.formats.joinToString(","))
+    if (c.animate != "none") {
+        args += listOf("--animate", c.animate)
+        if (c.loop && c.animate == "draw") args += "--loop"
+        c.duration?.let { args += listOf("--duration", fmtG(it)) }
+    }
     c.background?.let { args += listOf("--background", it) }
     return (listOf("render-rootiest-icons") + args).joinToString(" ") { if (Regex("^[\\w@%+=:,./-]+$").matches(it)) it else "'" + it.replace("'", "'\"'\"'") + "'" }
 }

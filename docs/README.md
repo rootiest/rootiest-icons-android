@@ -30,7 +30,7 @@ The app is [icons.rootiest.fyi](https://icons.rootiest.fyi) for a phone, with th
 | **Catalogue** | Every icon, status icon and badge, and emblem, as tiles. The search box filters them and, from three letters, looks through the other sets as well (`cloud`, or `tabler:cloud` for one set). Color, Auto, Dark and Light switch the variant; the chips filter by category or status state. The search box, the variant, the light/dark toggle and the chips stay at the top while the tiles scroll. A card at the top (with an empty search) and a button in the top bar open **Drawn with Math**. |
 | **Light and dark previews** | Auto shows each icon's `auto/` file: the dark and light versions in one SVG that switches with the viewer's mode (an icon without one shows its color version, faded; an emblem shows in white or black). A file that switches by itself (`auto/`, or an `-auto` icon such as `rootiest-id-auto`) has a small auto-brightness badge on its tile. The sun or moon button next to the variant previews every SVG that switches (the auto files, and the color icons, whose emblem takes a deeper shade in light mode) in light or dark mode, with a light or dark background to match; it starts as the app's appearance and keeps its choice for the session. |
 | **Detail** | One icon or emblem: its preview, its details, the variant, the padded twin, and for an emblem whether it is on the logo or alone. With a logo of your own loaded, Rootiest logo or Your logo. Placement (upper right or badge, size, right, down), the five layouts side by side, and the Render panel. The details say how it takes light or dark mode (it follows it, its emblem takes a deeper shade, or the same in both), and a preview that switches has the light/dark toggle in its corner. An icon with an auto file has an Auto variant: the published file only (no other logo or placement), and in place of the Render panel, Save and Share for the SVG (`<icon>-auto[-padded].svg`), since a raster cannot switch. An `-auto` icon says it is SVG only and points to its day and night versions for rasters. |
-| **Render panel** | The colors (a category, a status state, a brand's own, or any hex color, for the whole icon or per part), the layouts, any sizes up to 4096 px, PNG, WebP, ICO and SVG, and a background to flatten onto. Render draws every file; Save writes them to `Downloads/Rootiest Icons`, Share hands one file, or a zip of several, to another app. The command that writes the same files with `render-rootiest-icons` is shown and can be copied. |
+| **Render panel** | The colors (a category, a status state, a brand's own, or any hex color, for the whole icon or per part), the layouts, any sizes up to 4096 px, PNG, WebP, ICO and SVG, an animation for the SVG (Draw: it draws itself, once or looping; Heartbeat: a heart monitor's sweep across the emblem; and a duration), and a background to flatten onto. Render draws every file; Save writes them to `Downloads/Rootiest Icons`, Share hands one file, or a zip of several, to another app. The command that writes the same files with `render-rootiest-icons` is shown and can be copied. |
 | **Your own** | A logo and an emblem of your own, each an SVG from a file or the clipboard, with Keep its colors. They are kept in the app's private storage and never leave the phone. An SVG shared to the app, or opened with it, becomes your emblem. |
 | **Drawn with Math** | The site's interactive article on why SVG ([icons.rootiest.fyi/svg/](https://icons.rootiest.fyi/svg/)), in the app: the page in a WebView, light or dark as the app's appearance is. Its builder's downloads are saved to `Downloads/Rootiest Icons` and its Copy code goes to the clipboard. Back steps back through the page, then to the app; its links home return to the catalogue, other links open in the browser, and the top bar opens it in the browser too. |
 | **Settings** | Appearance (the phone's, light or dark), the preview background, refreshing the catalogue, and About: Drawn with Math, the version, links to the site, the command line tool, the status page (`status.rootiest.dev`), the source code and the privacy policy (`rootiest.com/privacy/icons-app`, the page the Google Play listing links), **Report an issue**, which opens a new support desk ticket (`support.rootiest.dev/new`, the desk's Android app topic) filled in with the app, Android and phone versions for the person to finish and send, and the open-source licenses. |
@@ -42,6 +42,9 @@ What differs from the command line tool:
   same, byte for byte, for published icons; for an icon built here the emblem's measured box can differ by a
   thousandth of its size, as on the homepage.
 - **WebP** is lossless on Android 11 and later; Android 10 writes it at the best lossy quality.
+- **Animations** are written into the SVG, byte for byte as the tool writes them, but not played in the app: AndroidSVG
+  draws the still icon, which is also what an animated SVG shows wherever it does not play. Open the saved file in a
+  browser to see it move.
 
 ## Where its data comes from
 
@@ -79,6 +82,7 @@ Two Gradle modules:
 | `Own.kt` | `own_text`, the generator's `clean` and `load_emblem`, `slug`, `placement_tag` |
 | `Iconify.kt` | `icon_data`, `icon_svg`, `external_name` |
 | `Files.kt` | `stem_of`, `planned`, `layouts_of`, `resolve`, `single_layout_svg`, the ICO and zip writers, and `schemeSvg`/`switches` (an SVG that switches with light or dark mode, fixed to one) |
+| `Animate.kt` | `animate_svg` (`--animate draw` and `heartbeat`), `animation_tag` |
 
 `:app` (`app/src/main/java/dev/rootiest/icons/`):
 
@@ -124,6 +128,7 @@ Named as `render-rootiest-icons` names them:
 ```text
 <icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>]-<size>px.<png|webp>
 <icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>].<ico|svg>
+<icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>]-<draw[-loop]|heartbeat>[-<duration>s].svg
 ```
 
 Save puts them in `Downloads/Rootiest Icons` through MediaStore, which needs no permission. Share writes them to the

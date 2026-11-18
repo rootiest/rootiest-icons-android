@@ -117,8 +117,20 @@ class FixturesTest {
             c.getValue("padded").jsonPrimitive.boolean, options(c.getValue("o").jsonObject))
         c.getValue("want").jsonArray.joinToString(",") { it.jsonPrimitive.content } to
             plannedFiles(stem, c.getValue("layouts").jsonArray.map { it.jsonPrimitive.content },
-                c.getValue("sizes").jsonArray.map { it.jsonPrimitive.int }, c.getValue("formats").jsonArray.map { it.jsonPrimitive.content }).joinToString(",")
+                c.getValue("sizes").jsonArray.map { it.jsonPrimitive.int }, c.getValue("formats").jsonArray.map { it.jsonPrimitive.content },
+                animationTag(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull)).joinToString(",")
     })
+
+    @Test
+    fun animations() {
+        check("animate", cases("anims").map { c ->
+            c.str("want")!! to sha(animateSvg(c.text("text")!!, c.str("animate")!!, c.getValue("duration").jsonPrimitive.doubleOrNull,
+                c.getValue("loop").jsonPrimitive.boolean))
+        })
+        check("animation tag", cases("animTags").map { c ->
+            c.str("want")!! to animationTag(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull)
+        })
+    }
 
     @Test
     fun layouts() {
