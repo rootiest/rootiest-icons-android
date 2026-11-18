@@ -5,18 +5,36 @@ import kotlin.math.sqrt
 
 // Animated SVG: render-icon.py's --animate. draw: the icon draws itself, each shape along its length (a stroked shape
 // its stroke, a filled one traced by an outline in its own color that gives way to the fill). heartbeat: a bright band
-// sweeps across the emblem, left to right, over a dimmed copy of it, as a heart monitor draws. Either way the icon as
-// it is shows wherever the animation does not play.
+// sweeps across the emblem, left to right, over a dimmed copy of it, as a heart monitor draws. pulse, spin, shake and
+// pop move the emblem as a whole; shine sweeps a white glint across it. Each way the icon as it is shows wherever the
+// animation does not play.
 
-val ANIMATIONS = listOf("none", "draw", "heartbeat")
+val ANIMATIONS = listOf("none", "draw", "heartbeat", "pulse", "spin", "shake", "pop", "shine")
 
 // Default seconds: the whole drawing, one cycle of a looping drawing, one beat.
 const val DRAW_ONCE = 2.5
 const val DRAW_LOOP = 4.0
 const val HEARTBEAT = 1.6
+const val SHINE = 2.5
 
-fun defaultDuration(animate: String, loop: Boolean): Double =
-    if (animate == "heartbeat") HEARTBEAT else if (loop) DRAW_LOOP else DRAW_ONCE
+// render-icon.py MOTIONS: the emblem moved as a whole, (default seconds, timing, repeats, keyframes).
+private class Motion(val seconds: Double, val timing: String, val count: String, val frames: String)
+private val MOTIONS = mapOf(
+    "pulse" to Motion(2.0, "ease-in-out", "infinite", "0%,100%{transform:scale(1)}50%{transform:scale(1.12)}"),
+    "spin" to Motion(2.0, "linear", "infinite", "0%{transform:rotate(0)}100%{transform:rotate(360deg)}"),
+    "shake" to Motion(1.6, "ease-in-out", "infinite", "0%,50%,100%{transform:rotate(0)}10%{transform:rotate(-12deg)}" +
+        "20%{transform:rotate(10deg)}30%{transform:rotate(-8deg)}40%{transform:rotate(5deg)}"),
+    "pop" to Motion(0.6, "ease-out", "1", "0%{transform:scale(0)}60%{transform:scale(1.15)}80%{transform:scale(.95)}" +
+        "100%{transform:scale(1)}"),
+)
+
+// render-icon.py default_duration(): an animation's seconds when none is given.
+fun defaultDuration(animate: String, loop: Boolean = false): Double = when (animate) {
+    "draw" -> if (loop) DRAW_LOOP else DRAW_ONCE
+    "heartbeat" -> HEARTBEAT
+    "shine" -> SHINE
+    else -> MOTIONS[animate]?.seconds ?: DRAW_ONCE
+}
 
 private val DRAWN = setOf("path", "circle", "ellipse", "rect", "polygon", "polyline", "line")
 private val UNDRAWN = setOf("defs", "mask", "clipPath", "symbol", "pattern", "marker", "linearGradient", "radialGradient", "filter")
@@ -175,11 +193,71 @@ fun heartbeatSvg(svgText: String, duration: Double): String {
     return text.substring(0, end) + "\n  <style id=\"animation\" type=\"text/css\">${heartbeatCss(duration)}</style>\n  $SWEEP_DEFS" + body
 }
 
+// render-icon.py emblems_wrapped(): each emblem group passed through wrap(group, end of its opening tag), or the whole
+// drawing as a group of its own (end 3); layouts switch by visibility. (head, body), body null when it is not an SVG.
+private fun emblemsWrapped(svgText: String, wrap: (String, Int) -> String): Pair<String, String?> {
+    val text = visibleLayouts(svgText)
+    val head = Regex("<svg\\b[^>]*>").find(text) ?: return text to null
+    val end = head.range.last + 1
+    var body = text.substring(end)
+    val spans = emblemGroups(body)
+    body = if (spans.isNotEmpty()) {
+        val out = StringBuilder()
+        var at = 0
+        for (span in spans) {
+            val group = body.substring(span)
+            out.append(body, at, span.first).append(wrap(group, group.indexOf('>') + 1))
+            at = span.last + 1
+        }
+        out.append(body, at, body.length).toString()
+    } else {
+        val defs = body.indexOf("</defs>")
+        val lo = if (defs >= 0) defs + "</defs>".length else 0
+        val last = body.lastIndexOf("</svg>")
+        val hi = if (last >= lo) last else body.length
+        body.substring(0, lo) + "\n  " + wrap("<g>${body.substring(lo, hi)}</g>", 3) + "\n" + body.substring(hi)
+    }
+    return text.substring(0, end) to body
+}
+
+// render-icon.py motion_svg(): the emblem moving (pulse, spin, shake, pop), its contents in a group the stylesheet moves.
+private fun motionSvg(svgText: String, motion: String, duration: Double): String {
+    val m = MOTIONS.getValue(motion)
+    val (head, body) = emblemsWrapped(svgText) { g, end -> "${g.substring(0, end)}<g class=\"motion\">${g.substring(end, g.length - 4)}</g></g>" }
+    if (body == null) return head
+    val css = ".motion{transform-box:fill-box;transform-origin:center;animation:motion-$motion ${fmtG(duration)}s ${m.timing} " +
+        "${m.count} both}@keyframes motion-$motion{${m.frames}}" +
+        "@media (prefers-reduced-motion: reduce){.motion{animation:none}}"
+    return head + "\n  <style id=\"animation\" type=\"text/css\">$css</style>" + body
+}
+
+private const val SHINE_DEFS = "<defs><filter id=\"shine-white\"><feColorMatrix type=\"matrix\" values=\"0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0\"/>" +
+    "</filter><linearGradient id=\"shine-fade\"><stop offset=\"0\" stop-color=\"#fff\" stop-opacity=\"0\"/>" +
+    "<stop offset=\".5\" stop-color=\"#fff\" stop-opacity=\".8\"/><stop offset=\"1\" stop-color=\"#fff\" " +
+    "stop-opacity=\"0\"/></linearGradient><mask id=\"shine\" x=\"-0.5\" y=\"-0.5\" width=\"2\" height=\"2\" " +
+    "maskContentUnits=\"objectBoundingBox\"><g transform=\"skewX(-20)\"><rect class=\"shine-band\" x=\"-1.2\" " +
+    "y=\"-0.5\" width=\"0.3\" height=\"2\" fill=\"url(#shine-fade)\"/></g></mask></defs>"
+
+// render-icon.py shine_svg(): a white glint across each emblem, or the whole drawing without one.
+private fun shineSvg(svgText: String, duration: Double): String {
+    val (head, body) = emblemsWrapped(svgText) { g, _ -> "$g<g mask=\"url(#shine)\"><g filter=\"url(#shine-white)\">$g</g></g>" }
+    if (body == null) return head
+    val css = ".shine-band{animation:shine-band ${fmtG(duration)}s ease-in-out infinite}" +
+        "@keyframes shine-band{0%{transform:translateX(0)}45%,100%{transform:translateX(2.6px)}}" +
+        "@media (prefers-reduced-motion: reduce){.shine-band{animation:none}}"
+    return head + "\n  <style id=\"animation\" type=\"text/css\">$css</style>\n  $SHINE_DEFS" + body
+}
+
 // render-icon.py animate_svg(): the SVG in an animation, duration null for its default; none leaves it as it is.
-fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Boolean = false): String = when (animate) {
-    "draw" -> animatedSvg(text, duration ?: defaultDuration("draw", loop), loop)
-    "heartbeat" -> heartbeatSvg(text, duration ?: HEARTBEAT)
-    else -> text
+fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Boolean = false): String {
+    val d = duration ?: defaultDuration(animate, loop)
+    return when (animate) {
+        "draw" -> animatedSvg(text, d, loop)
+        "heartbeat" -> heartbeatSvg(text, d)
+        "shine" -> shineSvg(text, d)
+        in MOTIONS -> motionSvg(text, animate, d)
+        else -> text
+    }
 }
 
 // render-icon.py animation_tag(): -draw, -draw-loop, -draw-loop-6s, -heartbeat, -heartbeat-1.2s; "" when still.
