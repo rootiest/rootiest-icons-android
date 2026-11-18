@@ -4,8 +4,9 @@ Rootiest Icons for Android: the [icons.rootiest.fyi](https://icons.rootiest.fyi)
 native app. Browse the Rootiest logo, service icons, status icons and emblems; build any icon from another set
 (Tabler, Material, Simple Icons and some 200 more, through Iconify) or from an SVG of your own, on the Rootiest logo or
 on a logo of your own; and render any of it at any size, in any layout and color, to PNG, WebP, ICO or SVG, even an
-SVG that draws itself or beats like a heart monitor. Preview any icon in light or dark mode, save the auto versions
-that switch by themselves, and read Drawn with Math, the site's interactive tour of SVG, without leaving the app.
+SVG that draws itself, beats like a heart monitor, pulses, spins, shakes, pops or shines. Preview any icon in light or
+dark mode, save the auto versions that switch by themselves, and read Drawn with Math, the site's interactive tour of
+SVG, without leaving the app.
 
 It builds every icon exactly as the [command line tool](https://icons.rootiest.fyi/#render),
 `render-rootiest-icons`, does: the same placement, knockout, colors and file names, and each render shows the command

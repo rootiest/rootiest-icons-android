@@ -238,7 +238,9 @@ def main():
         tb = ri.thicken(body, thick) if thick else body
         built_emblems.append(emblem(tb, ri.measured(vb, tb), "an emblem for the animations")[0])
     timings = [("draw", None, False), ("heartbeat", None, False), ("draw", 4.0, True), ("heartbeat", 0.75, False),
-               ("draw", 0.2, False), ("draw", None, True)]
+               ("pulse", None, False), ("spin", 3.5, False), ("shake", None, False), ("pop", 0.25, False),
+               ("shine", None, False), ("draw", 0.2, False), ("draw", None, True), ("pop", None, False),
+               ("shine", 1.75, False)]
     sources = [read("icons", v, f"{n}.svg") for v in ("color", "dark") for n in ("rootiest-gitea", "rootiest-status", "logo")] + \
               [read("icons", "color", "icon-ok-circle.svg"), single_layout(read("icons", "color", "rootiest-vault.svg"), 24)] + \
               [read("icons", "emblems", f"{n}.svg") for n in ("gitea", "status", "immich-color", "home")] + \
@@ -252,11 +254,11 @@ def main():
         '<g class="ColorScheme-Emblem2"><path d="M3 3"/></g><g class="a ColorScheme-Emblem"><rect/></g></svg>',
         '<svg viewBox="0 0 1 1"><defs><mask id="m"/></defs><circle r="1"/></svg>', "no svg here"]
     anims = [{"text": key(t), "animate": an, "duration": d, "loop": lp, "want": sha(ri.animate_svg(t, an, d, lp))}
-             for t in sources for an, d, lp in timings[:4]] + \
+             for t in sources for an, d, lp in timings[:9]] + \
             [{"text": key(t), "animate": an, "duration": d, "loop": lp, "want": sha(ri.animate_svg(t, an, d, lp))}
-             for t in sources[:3] for an, d, lp in timings[4:]]
+             for t in sources[:3] for an, d, lp in timings[9:]]
     anim_tags = [{"animate": an, "loop": lp, "duration": d, "want": ri.animation_tag(SimpleNamespace(animate=an, loop=lp, duration=d))}
-                 for an in ("none", "draw", "heartbeat") for lp in (False, True) for d in (None, 1.0, 0.25, 12.5)]
+                 for an in ri.ANIMATIONS for lp in (False, True) for d in (None, 1.0, 0.25, 12.5)]
 
     # Number formatting: Python's own.
     values = [0.5, 1952.8125, 1952.8135, 0.125, -0.125, -0.0005, 2.5, 1.005, 12345.6789, 1e-7, 123456789.0, 0.0001234, 100.0,

@@ -157,15 +157,22 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
                                     change(c.copy(animate = a, loop = c.loop && a == "draw",
                                         formats = if (a != "none" && "svg" !in c.formats) c.formats + "svg" else c.formats))
                                 },
-                                label = { Text(mapOf("none" to "None", "draw" to "Draw", "heartbeat" to "Heartbeat").getValue(a)) },
+                                label = { Text(a.replaceFirstChar(Char::uppercase)) },
                                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = palette.Surface0, selectedLabelColor = palette.Text),
                             )
                         }
                     }
                     if (c.animate != "none") {
                         Text(
-                            if (c.animate == "draw") "The SVG draws itself, line by line, then fills in."
-                            else "A bright sweep crosses the emblem, again and again, as a heart monitor draws.",
+                            when (c.animate) {
+                                "draw" -> "The SVG draws itself, line by line, then fills in."
+                                "heartbeat" -> "A bright sweep crosses the emblem, again and again, as a heart monitor draws."
+                                "pulse" -> "The emblem breathes: it grows a little and back, again and again."
+                                "spin" -> "The emblem turns, again and again (best for round ones)."
+                                "shake" -> "The emblem wobbles, then rests, again and again."
+                                "pop" -> "The emblem bounces in, once."
+                                else -> "A white glint crosses the emblem now and then."
+                            },
                             style = MaterialTheme.typography.bodySmall, color = palette.Subtext0,
                         )
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
