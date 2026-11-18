@@ -267,7 +267,7 @@ def main():
                   "frames": (lambda t: [len(t[0]), t[0][-1], t[1]])(ri.frame_times(SimpleNamespace(animate=an, loop=lp, duration=d)))}
                  for an in ri.ANIMATIONS if an != "none" for lp in (False, True) for d in (None, 1.0, 0.25, 12.5, 2.5, 0.7)]
     # Morphs, as rootiest-icons' check-site-colors.py makes them: published icons, padded dark, badges, one layout,
-    # emblems in their own units, the logo both ways, built icons; once and there and back.
+    # emblems in their own units, the logo both ways, second tones, built icons; once and there and back.
     morph_sets = [(read("icons", "color", "rootiest-gitea.svg"), read("icons", "color", "rootiest-home.svg")),
                   (read("icons", "color", "rootiest-notes.svg"), read("icons", "color", "rootiest-chat.svg")),
                   (read("icons", "dark", "padded", "rootiest-lock.svg"), read("icons", "dark", "padded", "rootiest-id.svg")),
@@ -275,7 +275,13 @@ def main():
                   (read("icons", "emblems", "heart.svg"), read("icons", "emblems", "status.svg")),
                   (read("icons", "emblems", "sync.svg"), read("icons", "emblems", "gitea.svg")),
                   (read("icons", "color", "logo.svg"), read("icons", "color", "rootiest-files.svg")),
-                  (single_layout(read("icons", "color", "rootiest-vault.svg"), 24), single_layout(read("icons", "color", "rootiest-mail.svg"), 24))]
+                  (single_layout(read("icons", "color", "rootiest-vault.svg"), 24), single_layout(read("icons", "color", "rootiest-mail.svg"), 24)),
+                  # second tones: on both sides, on one, in dark and switching with the viewer's mode
+                  (read("icons", "color", "rootiest-gitea.svg"), read("icons", "color", "rootiest-gitea-ssh.svg")),
+                  (read("icons", "color", "rootiest-github.svg"), read("icons", "color", "rootiest-gitea.svg")),
+                  (read("icons", "dark", "padded", "rootiest-gitea-ssh.svg"), read("icons", "dark", "padded", "rootiest-home.svg")),
+                  (read("icons", "auto", "rootiest-gitea.svg"), read("icons", "auto", "rootiest-github.svg")),
+                  (read("icons", "emblems", "gitea-ssh-mono.svg"), read("icons", "emblems", "gitea-mono.svg"))]
     morph_sets += [(ri.built_svg(built_emblems[0], None, "color", False, places[0]),
                     ri.built_svg(built_emblems[1], None, "color", False, places[1]))]
     anims += [{"text": key(a), "target": key(b), "animate": "morph", "duration": d, "loop": lp,
