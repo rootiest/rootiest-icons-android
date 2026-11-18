@@ -210,12 +210,16 @@ def main():
                       {"color": ("hex", "#18bcf2", "brand")}):
                 layouts = [["auto"], ["auto", "full", 16], [48, 24]][(i + len(o)) % 3]
                 sizes, formats = [[256], [16, 32, 48], [1024, 64]][i % 3], [["png"], ["png", "webp", "ico", "svg"], ["svg", "ico"]][len(o) % 3]
+                animate, loop, duration = [("none", False, None), ("draw", False, None), ("draw", True, None), ("draw", True, 6.5),
+                                           ("heartbeat", False, None), ("heartbeat", False, 1.25)][(i + len(o) + len(variant)) % 6]
                 a = SimpleNamespace(icon=stem, stem_name=stem, emblem=is_emblem, variant=variant, padded=padded and not is_emblem,
                                     color=o.get("color"), logo_color=o.get("logo"), emblem_color=o.get("emblem"),
-                                    tone2_color=o.get("tone2"), layouts=layouts, sizes=sizes, formats=formats, out="")
+                                    tone2_color=o.get("tone2"), layouts=layouts, sizes=sizes, formats=formats, out="",
+                                    animate=animate, loop=loop, duration=duration)
                 plans.append({"stem": stem, "emblem": is_emblem, "variant": variant, "padded": a.padded,
                               "o": {k: spec_js(o.get(k)) for k in ("color", "logo", "emblem", "tone2")},
-                              "layouts": [str(v) for v in layouts], "sizes": sizes, "formats": formats, "want": ri.planned(a)})
+                              "layouts": [str(v) for v in layouts], "sizes": sizes, "formats": formats,
+                              "animate": animate, "loop": loop, "duration": duration, "want": ri.planned(a)})
 
     # Layouts: one kept, as the CLI's --layout N --format svg.
     icon = read("icons", "color", "rootiest-gitea.svg")
@@ -225,6 +229,35 @@ def main():
                "resolve": [{"layout": str(l), "size": s, "want": str(ri.resolve(l, s, small))}
                            for l in ("auto", "full", 24) for s in (8, 16, 17, 24, 48, 49, 96, 97, 4096)]}
 
+    # Animations (--animate draw and heartbeat): published icons and emblems, a few built ones, one layout alone, odd
+    # shapes and groups, each with its default timing and others.
+    single_layout = lambda t, lay: ri.single_layout_svg(t, lay, ri.layouts_of(t))
+    built_emblems = []
+    for src, thick in (("emblems/src/status.svg", 1.3), ("emblems/gitea.svg", None)):
+        vb, body = gen.load_emblem(src)
+        tb = ri.thicken(body, thick) if thick else body
+        built_emblems.append(emblem(tb, ri.measured(vb, tb), "an emblem for the animations")[0])
+    timings = [("draw", None, False), ("heartbeat", None, False), ("draw", 4.0, True), ("heartbeat", 0.75, False),
+               ("draw", 0.2, False), ("draw", None, True)]
+    sources = [read("icons", v, f"{n}.svg") for v in ("color", "dark") for n in ("rootiest-gitea", "rootiest-status", "logo")] + \
+              [read("icons", "color", "icon-ok-circle.svg"), single_layout(read("icons", "color", "rootiest-vault.svg"), 24)] + \
+              [read("icons", "emblems", f"{n}.svg") for n in ("gitea", "status", "immich-color", "home")] + \
+              [ri.built_svg(epy, None, "color", False, places[0]) for epy in built_emblems[:2]] + [
+        '<svg viewBox="0,0,10,20"><path d="M1 1"/><g transform="matrix(2 0 0 3 1 1) rotate(9)" style="fill:none">'
+        '<rect width="2" stroke="red"/><circle r="1" style="fill: #abc ;stroke:none"/></g><defs><path d="M0 0"/></defs>'
+        '<line x2="4" stroke="currentColor" /><mask id="m"><rect fill="white"/></mask><polyline fill="none" points="0 0 1 1"/></svg>',
+        '<svg><g fill="url(#g)" transform="scale(.5) translate(3 4) scale(-2,4)"><ellipse rx="2" ry="1" class="a b"/></g>'
+        '<svg:path d="M2 2"/></svg>',
+        '<svg viewBox="0 0 9 9"><g class="ColorScheme-Emblem x"><g><path d="M1 1"/></g><g/></g><path d="M2 2"/>'
+        '<g class="ColorScheme-Emblem2"><path d="M3 3"/></g><g class="a ColorScheme-Emblem"><rect/></g></svg>',
+        '<svg viewBox="0 0 1 1"><defs><mask id="m"/></defs><circle r="1"/></svg>', "no svg here"]
+    anims = [{"text": key(t), "animate": an, "duration": d, "loop": lp, "want": sha(ri.animate_svg(t, an, d, lp))}
+             for t in sources for an, d, lp in timings[:4]] + \
+            [{"text": key(t), "animate": an, "duration": d, "loop": lp, "want": sha(ri.animate_svg(t, an, d, lp))}
+             for t in sources[:3] for an, d, lp in timings[4:]]
+    anim_tags = [{"animate": an, "loop": lp, "duration": d, "want": ri.animation_tag(SimpleNamespace(animate=an, loop=lp, duration=d))}
+                 for an in ("none", "draw", "heartbeat") for lp in (False, True) for d in (None, 1.0, 0.25, 12.5)]
+
     # Number formatting: Python's own.
     values = [0.5, 1952.8125, 1952.8135, 0.125, -0.125, -0.0005, 2.5, 1.005, 12345.6789, 1e-7, 123456789.0, 0.0001234, 100.0,
               3321.4, -86.7, 1.3, 2.6, 0.00001] + [rng.uniform(-5000, 5000) for _ in range(200)] + \
@@ -232,12 +265,14 @@ def main():
     numbers = [{"x": v, "f3": f"{v:.3f}", "f4": f"{v:.4f}", "g": f"{v:g}", "g4": f"{v:.4g}", "js": ri.js_num(v)} for v in values]
 
     out = {"colors": colors, "cfg": cfg, "recolor": recolor, "mono": mono_cases, "shades": shades, "built": built, "alone": alone,
-           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "layouts": layouts, "numbers": numbers}
+           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "layouts": layouts, "numbers": numbers,
+           "anims": anims, "animTags": anim_tags}
     path = os.path.join(HERE, "core", "src", "test", "resources", "fixtures.json")
     with open(path, "w") as f:
         json.dump(out, f, separators=(",", ":"), sort_keys=True)
     print(f"{os.path.relpath(path, HERE)}: {len(recolor)} recolorings, {len(shades)} shades, {len(built)} built icons, "
           f"{len(alone)} emblems, {len(cleans)} cleaned files, {len(icondata)} Iconify icons, {len(plans)} plans, "
+          f"{len(anims)} animations, "
           f"{len(numbers)} numbers, {os.path.getsize(path) // 1024} KB")
 
 

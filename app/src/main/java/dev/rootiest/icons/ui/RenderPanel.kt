@@ -55,11 +55,15 @@ import dev.rootiest.icons.Source
 import dev.rootiest.icons.commandLine
 import dev.rootiest.icons.core.ColorSpec
 import dev.rootiest.icons.core.Colors
+import dev.rootiest.icons.core.ANIMATIONS
 import dev.rootiest.icons.core.colorSpec
+import dev.rootiest.icons.core.defaultDuration
+import dev.rootiest.icons.core.fmtG
 import dev.rootiest.icons.core.plannedFiles
 import dev.rootiest.icons.core.stemOf
 import dev.rootiest.icons.render.FOLDER
 import dev.rootiest.icons.render.ICO_MAX
+import dev.rootiest.icons.render.Animation
 import dev.rootiest.icons.render.MAX_PX
 import dev.rootiest.icons.render.Rendered
 import dev.rootiest.icons.render.renderFiles
@@ -82,17 +86,22 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
     val colors = (vm.catalogue as dev.rootiest.icons.Catalogue.Ready).studio.index.colors
     val small = d.small
     var sizesText by remember(s) { mutableStateOf(c.sizes.joinToString(", ")) }
+    var durationText by remember(s) { mutableStateOf(c.duration?.let { fmtG(it) } ?: "") }
+    val durationOk = durationText.isBlank() || durationText.trim().toDoubleOrNull()?.let { it in 0.2..60.0 } == true
+    val animation = Animation(c.animate, c.loop && c.animate == "draw", c.duration)
     var results by remember(d.text, c) { mutableStateOf<List<Rendered>?>(null) }
     var busy by remember { mutableStateOf(false) }
     val stem = stemOf(d.stemBase, d.isEmblem, c.variant, c.padded && !d.isEmblem, d.shown ?: dev.rootiest.icons.core.ColorOptions())
     val layouts = if (small.isEmpty()) listOf("auto") else c.layouts
-    val files = plannedFiles(stem, layouts, c.sizes, c.formats)
+    val files = plannedFiles(stem, layouts, c.sizes, c.formats, animation.tag)
     val problem = when {
         c.sizes.isEmpty() -> "Give at least one size, from 1 to $MAX_PX px."
         c.formats.isEmpty() -> "Pick at least one format."
         layouts.isEmpty() -> "Pick at least one layout."
         "ico" in c.formats && c.sizes.max() > ICO_MAX -> "An .ico holds sizes up to $ICO_MAX px: drop the larger sizes or ICO."
         c.background != null && parseColor(c.background) == null -> "The background is not a color like #1e1e2e."
+        c.animate != "none" && "svg" !in c.formats -> "Animation plays in the SVG only: pick SVG (the other formats stay still)."
+        !durationOk -> "A duration is a number of seconds from 0.2 to 60."
         else -> null
     }
 
@@ -138,6 +147,50 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
             Field("Formats") {
                 Chips(listOf("png", "webp", "ico", "svg"), c.formats, mapOf("png" to "PNG", "webp" to "WebP", "ico" to "ICO", "svg" to "SVG")) { change(c.copy(formats = it)) }
             }
+            Field("Animation (SVG)") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ANIMATIONS.forEach { a ->
+                            FilterChip(
+                                selected = c.animate == a,
+                                onClick = {
+                                    change(c.copy(animate = a, loop = c.loop && a == "draw",
+                                        formats = if (a != "none" && "svg" !in c.formats) c.formats + "svg" else c.formats))
+                                },
+                                label = { Text(mapOf("none" to "None", "draw" to "Draw", "heartbeat" to "Heartbeat").getValue(a)) },
+                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = palette.Surface0, selectedLabelColor = palette.Text),
+                            )
+                        }
+                    }
+                    if (c.animate != "none") {
+                        Text(
+                            if (c.animate == "draw") "The SVG draws itself, line by line, then fills in."
+                            else "A bright sweep crosses the emblem, again and again, as a heart monitor draws.",
+                            style = MaterialTheme.typography.bodySmall, color = palette.Subtext0,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (c.animate == "draw") {
+                                Switch(checked = c.loop, onCheckedChange = { change(c.copy(loop = it)) })
+                                Text("Loop", Modifier.padding(end = 8.dp))
+                            }
+                            OutlinedTextField(
+                                value = durationText,
+                                onValueChange = { text ->
+                                    durationText = text
+                                    val v = text.trim().toDoubleOrNull()
+                                    change(c.copy(duration = if (text.isBlank() || v == null || v !in 0.2..60.0) null else v))
+                                },
+                                isError = !durationOk,
+                                singleLine = true,
+                                placeholder = { Text(fmtG(defaultDuration(c.animate, c.loop))) },
+                                suffix = { Text("s") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.width(110.dp),
+                            )
+                        }
+                    }
+                }
+            }
             Field("Background") {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Switch(checked = c.background != null, onCheckedChange = { change(c.copy(background = if (it) "#1e1e2e" else null)) })
@@ -159,7 +212,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
                     scope.launch {
                         val made = runCatching {
                             withContext(Dispatchers.Default) {
-                                renderFiles(d.text, stem, small, layouts, c.sizes, c.formats, c.background?.let { android.graphics.Color.parseColor(it) })
+                                renderFiles(d.text, stem, small, layouts, c.sizes, c.formats, c.background?.let { android.graphics.Color.parseColor(it) }, animation)
                             }
                         }
                         busy = false

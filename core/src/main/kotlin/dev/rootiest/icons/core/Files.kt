@@ -18,12 +18,13 @@ fun stemOf(base: String, emblem: Boolean, variant: String, padded: Boolean, o: C
     return "$base-${if (emblem) "emblem-" else ""}$variant${if (tag.isNotEmpty()) "-$tag" else ""}${if (padded) "-padded" else ""}"
 }
 
-// render-icon.py planned(): every file a render writes, in order. A layout is "auto", "full" or a small size.
-fun plannedFiles(stem: String, layouts: List<String>, sizes: List<Int>, formats: List<String>): List<String> {
+// render-icon.py planned(): every file a render writes, in order. A layout is "auto", "full" or a small size; anim is
+// the animation's part of an SVG's name (animationTag()).
+fun plannedFiles(stem: String, layouts: List<String>, sizes: List<Int>, formats: List<String>, anim: String = ""): List<String> {
     val out = ArrayList<String>()
     for (lay in layouts) {
         val name = stem + if (lay == "auto") "" else "-layout-$lay"
-        if ("svg" in formats) out.add("$name.svg")
+        if ("svg" in formats) out.add("$name$anim.svg")
         for (size in sizes) for (f in listOf("png", "webp")) if (f in formats) out.add("$name-${size}px.$f")
         if ("ico" in formats) out.add("$name.ico")
     }
