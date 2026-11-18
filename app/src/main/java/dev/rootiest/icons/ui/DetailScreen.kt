@@ -137,12 +137,12 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
     val autoFile = auto || (subject is IconSubject && c.variant == "color" && subject.entry.name.endsWith("-auto"))
     // only what changes the picture: the output choices below do not draw it again
     val picture = c.copy(layouts = emptyList(), sizes = emptyList(), formats = emptyList(), background = null,
-        animate = "none", loop = false, duration = null, morphTo = null)
+        animate = "none", loop = false, duration = null, morphTo = null, morphKind = "published")
     val drawn by produceState<Result<Drawn>?>(null, s, picture, logo) {
         value = runCatching { studio.draw(s, c, logo, vm.ownEmblem.file) }
     }
     val d = drawn?.getOrNull()
-    val moving = rememberMoving(vm, s, c)
+    val moving = rememberMoving(vm, s, c, d)
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.fillMaxWidth().height(240.dp).swatch(c.variant, vm.previewBackground, dark), contentAlignment = Alignment.Center) {
             val about = "${s.title}, ${c.variant}, ${if (dark) "dark" else "light"} mode"
