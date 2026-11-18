@@ -11,6 +11,10 @@ import androidx.core.content.FileProvider
 import dev.rootiest.icons.core.NamedBytes
 import dev.rootiest.icons.core.animateSvg
 import dev.rootiest.icons.core.animationTag
+import dev.rootiest.icons.core.FPS
+import dev.rootiest.icons.core.frameSvg
+import dev.rootiest.icons.core.frameTimes
+import dev.rootiest.icons.core.layoutsOf
 import dev.rootiest.icons.core.icoBytes
 import dev.rootiest.icons.core.rasterSvg
 import dev.rootiest.icons.core.singleLayoutSvg
@@ -31,13 +35,18 @@ private fun Bitmap.bytes(format: Bitmap.CompressFormat) = ByteArrayOutputStream(
 @Suppress("DEPRECATION")
 private val WEBP = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSLESS else Bitmap.CompressFormat.WEBP
 
-// An SVG's animation (render-icon.py --animate): none, draw or heartbeat, looping (draw), and seconds (null: default).
-data class Animation(val animate: String = "none", val loop: Boolean = false, val duration: Double? = null) {
-    val tag get() = animationTag(animate, loop, duration)
+// An SVG's animation (render-icon.py --animate), looping (draw and morph), seconds (null: default), and for a morph
+// the icon it turns into (its name, and its SVG built as the icon is).
+data class Animation(
+    val animate: String = "none", val loop: Boolean = false, val duration: Double? = null,
+    val morphTo: String? = null, val target: String? = null,
+) {
+    val tag get() = animationTag(animate, loop, duration, morphTo)
+    val moves get() = animate != "none" && (animate != "morph" || target != null)
 }
 
-// Every file of a render, as render-rootiest-icons writes them: per layout an SVG (animated, if asked), a PNG and a WebP
-// per size, and one .ico holding every size.
+// Every file of a render, as render-rootiest-icons writes them: per layout an SVG (animated, if asked), a PNG, a WebP
+// and a GIF per size (the WebP and GIF animated, with an animation), and one .ico holding every size.
 fun renderFiles(
     text: String, stem: String, small: List<Int>, layouts: List<String>, sizes: List<Int>, formats: List<String>, background: Int?,
     animation: Animation = Animation(),
@@ -45,12 +54,24 @@ fun renderFiles(
     val out = ArrayList<Rendered>()
     for (lay in layouts) {
         val name = stem + if (lay == "auto") "" else "-layout-$lay"
+        val one = if (lay == "auto" || small.isEmpty()) text else singleLayoutSvg(text, lay)
+        val target = animation.target?.let { if (lay != "auto" && layoutsOf(it).isNotEmpty()) singleLayoutSvg(it, lay) else it }
+        val moving = animateSvg(one, animation.animate, animation.duration, animation.loop, target)
         if ("svg" in formats) {
-            val one = if (lay == "auto" || small.isEmpty()) text else singleLayoutSvg(text, lay)
-            val svg = animateSvg(one, animation.animate, animation.duration, animation.loop)
-            out += Rendered(NamedBytes("$name${animation.tag}.svg", svg.toByteArray()), Svg.rasterize(rasterSvg(text, lay, 192, small), 192))
+            out += Rendered(NamedBytes("$name${animation.tag}.svg", moving.toByteArray()), Svg.rasterize(rasterSvg(text, lay, 192, small), 192))
         }
-        if (formats.none { it != "svg" }) continue
+        if (animation.moves && ("webp" in formats || "gif" in formats)) {
+            val (times, once) = frameTimes(animation.animate, animation.loop, animation.duration)
+            for (size in sizes) {
+                // each frame: the animation's values at its moment, then one layout and the dark-background shades
+                val frames = times.map { t -> Svg.rasterize(rasterSvg(frameSvg(moving, t), lay, size, small), size, background) }
+                val shown = runs(frames)
+                val preview = frames.last().let { if (size <= 256) it else Bitmap.createScaledBitmap(it, 256, 256, true) }
+                if ("webp" in formats) out += Rendered(NamedBytes("$name${animation.tag}-${size}px.webp", animatedWebp(shown, 1000 / FPS, once)), preview)
+                if ("gif" in formats) out += Rendered(NamedBytes("$name${animation.tag}-${size}px.gif", animatedGif(shown, 100 / FPS, once)), preview)
+            }
+        }
+        if (formats.none { it == "png" || it == "ico" || (!animation.moves && (it == "webp" || it == "gif")) }) continue
         val pngs = ArrayList<Pair<Int, ByteArray>>()
         var last: Bitmap? = null
         for (size in sizes) {
@@ -59,7 +80,8 @@ fun renderFiles(
             pngs += size to png
             val preview = if (size <= 256) bitmap else Bitmap.createScaledBitmap(bitmap, 256, 256, true)
             if ("png" in formats) out += Rendered(NamedBytes("$name-${size}px.png", png), preview)
-            if ("webp" in formats) out += Rendered(NamedBytes("$name-${size}px.webp", bitmap.bytes(WEBP)), preview)
+            if ("webp" in formats && !animation.moves) out += Rendered(NamedBytes("$name-${size}px.webp", bitmap.bytes(WEBP)), preview)
+            if ("gif" in formats && !animation.moves) out += Rendered(NamedBytes("$name-${size}px.gif", animatedGif(listOf(bitmap to 1), 0, true)), preview)
             last = preview
         }
         if ("ico" in formats) out += Rendered(NamedBytes("$name.ico", icoBytes(pngs)), last)
@@ -71,6 +93,7 @@ private fun mime(name: String) = when (name.substringAfterLast('.')) {
     "svg" -> "image/svg+xml"
     "png" -> "image/png"
     "webp" -> "image/webp"
+    "gif" -> "image/gif"
     "ico" -> "image/x-icon"
     else -> "application/zip"
 }

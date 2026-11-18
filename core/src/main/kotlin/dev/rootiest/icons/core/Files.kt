@@ -25,7 +25,7 @@ fun plannedFiles(stem: String, layouts: List<String>, sizes: List<Int>, formats:
     for (lay in layouts) {
         val name = stem + if (lay == "auto") "" else "-layout-$lay"
         if ("svg" in formats) out.add("$name$anim.svg")
-        for (size in sizes) for (f in listOf("png", "webp")) if (f in formats) out.add("$name-${size}px.$f")
+        for (size in sizes) for (f in listOf("png", "webp", "gif")) if (f in formats) out.add("$name${if (f != "png") anim else ""}-${size}px.$f")
         if ("ico" in formats) out.add("$name.ico")
     }
     return out

@@ -118,17 +118,25 @@ class FixturesTest {
         c.getValue("want").jsonArray.joinToString(",") { it.jsonPrimitive.content } to
             plannedFiles(stem, c.getValue("layouts").jsonArray.map { it.jsonPrimitive.content },
                 c.getValue("sizes").jsonArray.map { it.jsonPrimitive.int }, c.getValue("formats").jsonArray.map { it.jsonPrimitive.content },
-                animationTag(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull)).joinToString(",")
+                animationTag(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull,
+                    c.str("morphTo"))).joinToString(",")
     })
 
     @Test
     fun animations() {
         check("animate", cases("anims").map { c ->
             c.str("want")!! to sha(animateSvg(c.text("text")!!, c.str("animate")!!, c.getValue("duration").jsonPrimitive.doubleOrNull,
-                c.getValue("loop").jsonPrimitive.boolean))
+                c.getValue("loop").jsonPrimitive.boolean, c.text("target")))
         })
         check("animation tag", cases("animTags").map { c ->
-            c.str("want")!! to animationTag(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull)
+            c.str("want")!! to animationTag(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull,
+                c.str("morphTo"))
+        })
+        check("frame times", cases("animTags").map { c ->
+            val f = c.getValue("frames").jsonArray
+            "${f[0].jsonPrimitive.int} ${f[1].jsonPrimitive.double} ${f[2].jsonPrimitive.boolean}" to
+                frameTimes(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull)
+                    .let { (t, once) -> "${t.size} ${t.last()} $once" }
         })
     }
 
