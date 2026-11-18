@@ -42,6 +42,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
@@ -210,7 +211,10 @@ private fun Filters(vm: IconsViewModel, index: Index) {
 
 // dark: the preview mode it is drawn in; badge: it shows a file that follows light or dark mode by itself.
 @Composable
-private fun Tile(svg: String?, variant: String, vm: IconsViewModel, name: String, title: String, faded: Boolean = false, dark: Boolean = previewDark(vm), badge: Boolean = false, onClick: () -> Unit) {
+// A tile opens its icon; a tap on its name copies the name instead (copy: as render-rootiest-icons and the morph's
+// "by name" take it).
+private fun Tile(svg: String?, variant: String, vm: IconsViewModel, name: String, title: String, copy: String, faded: Boolean = false, dark: Boolean = previewDark(vm), badge: Boolean = false, onClick: () -> Unit) {
+    val context = LocalContext.current
     Column(
         Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = "Open $title", onClick = onClick).padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -220,7 +224,16 @@ private fun Tile(svg: String?, variant: String, vm: IconsViewModel, name: String
             if (badge) AutoBadge(swatchIsLight(variant, vm.previewBackground, dark).not(), Modifier.align(Alignment.TopEnd))
         }
         Spacer(Modifier.height(4.dp))
-        Text(name, style = MaterialTheme.typography.labelMedium, color = if (faded) palette.Subtext0 else palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            name,
+            Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClickLabel = "Copy the name $copy") {
+                context.getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("name", copy))
+                // Android 13 and later confirm a copy themselves
+                if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(context, "Copied $copy", android.widget.Toast.LENGTH_SHORT).show()
+            }.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelMedium, color = if (faded) palette.Subtext0 else palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
         Text(title, style = MaterialTheme.typography.bodySmall, color = palette.Subtext0, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -234,7 +247,7 @@ private fun IconTile(vm: IconsViewModel, e: IconEntry) {
         else -> "color"
     }
     val svg by produceState<String?>(null, e.name, variant) { value = runCatching { vm.repo.svg("$variant/${e.name}.svg") }.getOrNull() }
-    Tile(svg, variant, vm, e.name.removePrefix("rootiest-"), e.title, faded = variant != vm.variant,
+    Tile(svg, variant, vm, e.name.removePrefix("rootiest-"), e.title, e.name, faded = variant != vm.variant,
         badge = variant == "auto" || (variant == "color" && e.name.endsWith("-auto"))) { vm.open(Route.Detail(IconSubject(e))) }
 }
 
@@ -250,7 +263,7 @@ private fun EmblemTile(vm: IconsViewModel, e: EmblemEntry) {
             if (mono == "color" || e.keepFill) text else MONO.getValue(mono).let { recolor(text, it.first, it.second) }
         }.getOrNull()
     }
-    Tile(svg, variant, vm, e.name, e.title, dark = dark) { vm.open(Route.Detail(EmblemSubject(e))) }
+    Tile(svg, variant, vm, e.name, e.title, e.name, dark = dark) { vm.open(Route.Detail(EmblemSubject(e))) }
 }
 
 // An icon from another set, as its set draws it, in the text color; opens on the logo.
@@ -260,7 +273,7 @@ private fun OtherTile(vm: IconsViewModel, name: String) {
     val hex = "#%06x".format(0xFFFFFF and android.graphics.Color.argb(255, (text.red * 255).toInt(), (text.green * 255).toInt(), (text.blue * 255).toInt()))
     val svg = vm.other.bodies[name]?.replace("currentColor", hex)?.replaceFirst("<svg ", "<svg color=\"$hex\" fill=\"$hex\" ")
     // drawn in the app's text color, so on the app theme's background whatever the preview mode
-    Tile(svg, "color", vm, name.substringAfter(':'), name.substringBefore(':'), dark = palette === dev.rootiest.icons.ui.theme.Mocha) {
+    Tile(svg, "color", vm, name.substringAfter(':'), name.substringBefore(':'), name, dark = palette === dev.rootiest.icons.ui.theme.Mocha) {
         vm.external("rootiest:$name")?.let { vm.open(Route.Detail(IconifySubject(it), mine = vm.ownLogo.logo != null)) }
     }
 }

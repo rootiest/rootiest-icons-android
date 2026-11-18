@@ -81,7 +81,8 @@ data class Choices(
     val animate: String = "none", // render-icon.py --animate: none, draw or heartbeat, for the SVG
     val loop: Boolean = false, // --loop, for draw and morph
     val duration: Double? = null, // --duration in seconds; null: the animation's default
-    val morphTo: String? = null, // --morph-to: a published icon's or emblem's name
+    val morphTo: String? = null, // the morph's target: a published icon's or emblem's name, set:icon, or your file's
+    val morphKind: String = "published", // what morphTo names: published, iconify or own
 ) {
     val placedElsewhere get() = preset != "rootiest" || scale != null || x != 0.0 || y != 0.0
 }
@@ -260,7 +261,8 @@ class Studio(private val repo: Repo, val index: Index) {
 }
 
 // The whole command for a render: the name and placement (Drawn.args), then the choices.
-fun commandLine(d: Drawn, c: Choices): String {
+// morphName: the morph's target as --morph-to names it (Moving's), when there is one.
+fun commandLine(d: Drawn, c: Choices, morphName: String? = null): String {
     val args = ArrayList(d.args)
     if (c.variant != "color") args += listOf("--variant", c.variant)
     if (c.padded && !d.isEmblem) args += "--padded"
@@ -272,7 +274,7 @@ fun commandLine(d: Drawn, c: Choices): String {
     if (c.formats != listOf("png")) args += listOf("--format", c.formats.joinToString(","))
     if (c.animate != "none") {
         args += listOf("--animate", c.animate)
-        if (c.animate == "morph") c.morphTo?.let { args += listOf("--morph-to", it) }
+        if (c.animate == "morph") morphName?.let { args += listOf("--morph-to", it) }
         if (c.loop && (c.animate == "draw" || c.animate == "morph")) args += "--loop"
         c.duration?.let { args += listOf("--duration", fmtG(it)) }
     }

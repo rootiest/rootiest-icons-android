@@ -20,7 +20,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -52,6 +55,9 @@ import dev.rootiest.icons.Choices
 import dev.rootiest.icons.Drawn
 import dev.rootiest.icons.EmblemSubject
 import dev.rootiest.icons.IconSubject
+import dev.rootiest.icons.IconifySubject
+import dev.rootiest.icons.OwnEmblemSubject
+import dev.rootiest.icons.OwnLogoSubject
 import dev.rootiest.icons.IconsViewModel
 import dev.rootiest.icons.R
 import dev.rootiest.icons.Source
@@ -80,37 +86,59 @@ import kotlinx.coroutines.withContext
 
 private fun parseColor(hex: String) = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
 
-// The choices' animation, with a morph's target drawn (null until it is), whether this icon can morph here, and the
-// icons it can morph into.
-internal data class Moving(val animation: Animation, val morphable: Boolean, val targets: List<String>)
+// The choices' animation, with a morph's target drawn (null until it is) and named as --morph-to takes it, whether
+// this icon can morph here, the published icons it can morph into, why its target could not be drawn, and whether
+// your emblem file can be one.
+internal data class Moving(
+    val animation: Animation, val morphable: Boolean, val targets: List<String>, val failed: String? = null,
+    val ownTarget: String? = null,
+)
 
 @Composable
-internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices): Moving {
+internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?): Moving {
     val studio = (vm.catalogue as dev.rootiest.icons.Catalogue.Ready).studio
-    // Morphing here: a published icon or emblem, as published, into another of the same kind (render-icon.py builds
-    // the target as the icon is built; here that is the published file, in this variant and these colors).
+    // Morphing here, as render-icon.py's morph_target() builds the target: another icon (an emblem, for an emblem)
+    // built as this one is, in the same variant, padding, colors, logo and placement. A published one, an icon from
+    // another set by name, or your emblem file; a published icon is its file unless your logo or another placement
+    // has it built here (Studio.draw decides, as for this icon). Auto files exist only as published, so not in Auto.
     val subject = s.subject
-    val morphable = (subject is IconSubject && !c.mine && !c.placedElsewhere && c.variant != "auto") || (subject is EmblemSubject && !c.whole)
+    val whole = subject is IconSubject || subject is OwnLogoSubject || c.whole
+    val logo = vm.ownLogo.logo
+    val ownEmblem = vm.ownEmblem.file
+    val rebuilt = (whole && (c.mine || subject is OwnLogoSubject) && logo != null) || (whole && c.placedElsewhere)
+    val morphable = c.variant != "auto"
     val targets = when {
         !morphable -> emptyList()
-        subject is IconSubject -> studio.index.icons.filter { it.name != subject.entry.name && c.variant in it.variants && (!c.padded || it.padded) }.map { it.name }
-        subject is EmblemSubject -> studio.index.emblems.filter { it.name != subject.entry.name }.map { it.name }
-        else -> emptyList()
+        whole -> studio.index.icons.filter {
+            !(subject is IconSubject && it.name == subject.entry.name) && c.variant in it.variants && (!c.padded || it.padded) &&
+                (!rebuilt || (it.build != null && !it.build!!.colorOnly))
+        }.map { it.name }
+        else -> studio.index.emblems.filter { !(subject is EmblemSubject && it.name == subject.entry.name) }.map { it.name }
     }
-    val target by produceState<String?>(null, c.morphTo, c.animate, c.variant, c.padded, c.colors, morphable) {
+    val ownTarget = ownEmblem?.name?.takeIf { subject !is OwnEmblemSubject }
+    // the colors this icon shows (its brand's, when that is the default) go to the target too; with none, the target
+    // takes its own brand color, as render-icon.py resolves each
+    val colors = d?.shown?.takeIf { c.variant == "color" } ?: c.colors
+    val drawnTarget by produceState<Result<Drawn>?>(null, c.morphTo, c.morphKind, c.animate, c.variant, c.padded, colors, c.mine,
+        c.whole, c.preset, c.scale, c.x, c.y, logo, ownEmblem, morphable) {
         value = null
         val name = c.morphTo
         if (c.animate != "morph" || !morphable || name == null) return@produceState
         value = runCatching {
-            val ts = when (subject) {
-                is IconSubject -> studio.load(IconSubject(studio.index.icons.first { it.name == name }), null)
-                else -> studio.load(EmblemSubject(studio.index.emblems.first { it.name == name }), null)
+            val ts = when (c.morphKind) {
+                "iconify" -> IconifySubject(vm.external(name) ?: throw IllegalArgumentException("$name is not a set and an icon, like tabler:heart"))
+                "own" -> OwnEmblemSubject
+                else -> if (whole) IconSubject(studio.index.icons.first { it.name == name })
+                    else EmblemSubject(studio.index.emblems.first { it.name == name })
             }
-            studio.draw(ts, c, null, null).text
-        }.getOrNull()
+            studio.draw(studio.load(ts, ownEmblem), c.copy(whole = whole, mine = c.mine || subject is OwnLogoSubject, colors = colors), logo, ownEmblem)
+        }
     }
+    val target = drawnTarget?.getOrNull()
     val looping = c.animate == "draw" || c.animate == "morph"
-    return Moving(Animation(c.animate, c.loop && looping, c.duration, c.morphTo.takeIf { c.animate == "morph" }, target), morphable, targets)
+    val name = target?.args?.firstOrNull()
+    return Moving(Animation(c.animate, c.loop && looping, c.duration, name.takeIf { c.animate == "morph" }, target?.text), morphable, targets,
+        drawnTarget?.exceptionOrNull()?.let { "Could not draw ${c.morphTo}: ${it.message ?: it.javaClass.simpleName}" }, ownTarget)
 }
 
 // Everything render-rootiest-icons makes, made here: the colors, the layouts, any sizes, PNG, WebP, ICO, SVG and GIF,
@@ -139,8 +167,9 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
         "ico" in c.formats && c.sizes.max() > ICO_MAX -> "An .ico holds sizes up to $ICO_MAX px: drop the larger sizes or ICO."
         c.background != null && parseColor(c.background) == null -> "The background is not a color like #1e1e2e."
         c.animate != "none" && c.formats.none { it in setOf("svg", "webp", "gif") } -> "Animation plays in the SVG, WebP and GIF: pick one of them."
-        c.animate == "morph" && !morphable -> "Morphing here works on the published icons and emblems as published; use the command line for this one."
+        c.animate == "morph" && !morphable -> "Auto files exist only as published: pick color, dark or light to morph."
         c.animate == "morph" && c.morphTo == null -> "Pick an icon to morph into."
+        c.animate == "morph" && moving.failed != null -> moving.failed
         c.animate == "morph" && animation.target == null -> "Getting ${c.morphTo}…"
         !durationOk -> "A duration is a number of seconds from 0.2 to 60."
         else -> null
@@ -222,13 +251,23 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                         )
                         if (c.animate == "morph" && morphable) {
                             var open by remember { mutableStateOf(false) }
+                            var asking by remember { mutableStateOf(false) }
                             Box {
                                 OutlinedButton(onClick = { open = true }) { Text(c.morphTo?.let { "Into ${it.removePrefix("rootiest-")}" } ?: "Morph into…") }
                                 DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                                    DropdownMenuItem(text = { Text("By name, from another set…") }, onClick = { open = false; asking = true })
+                                    moving.ownTarget?.let { f ->
+                                        DropdownMenuItem(text = { Text("Your emblem file, $f") }, onClick = { open = false; change(c.copy(morphTo = f, morphKind = "own")) })
+                                    }
+                                    HorizontalDivider()
                                     targets.forEach { t ->
-                                        DropdownMenuItem(text = { Text(t.removePrefix("rootiest-")) }, onClick = { open = false; change(c.copy(morphTo = t)) })
+                                        DropdownMenuItem(text = { Text(t.removePrefix("rootiest-")) }, onClick = { open = false; change(c.copy(morphTo = t, morphKind = "published")) })
                                     }
                                 }
+                            }
+                            if (asking) MorphByName(c.morphTo.takeIf { c.morphKind == "iconify" } ?: "", { asking = false }) { name ->
+                                asking = false
+                                change(c.copy(morphTo = name, morphKind = "iconify"))
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -327,7 +366,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
         }
     }
     Note("The same with the command line tool:", Modifier)
-    val command = commandLine(d, c.copy(layouts = layouts))
+    val command = commandLine(d, c.copy(layouts = layouts), animation.morphTo)
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(palette.Mantle).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(command, Modifier.weight(1f).padding(vertical = 10.dp), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         IconButton(onClick = {
@@ -413,4 +452,28 @@ private fun ColorRow(label: String, value: ColorSpec?, colors: Colors, default: 
             )
         }
     }
+}
+
+// The morph's target by name: an icon from another set, set:icon (rootiest: before it is taken off).
+@Composable
+private fun MorphByName(start: String, dismiss: () -> Unit, pick: (String) -> Unit) {
+    var text by remember { mutableStateOf(start) }
+    val name = text.trim().removePrefix("rootiest:")
+    val ok = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$").matches(name)
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Morph into") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("An icon from another set, as set:icon. Tap a name in the search results to copy it.",
+                    style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+                OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, placeholder = { Text("tabler:heart") },
+                    isError = text.isNotBlank() && !ok,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(autoCorrectEnabled = false,
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None))
+            }
+        },
+        confirmButton = { TextButton(onClick = { pick(name) }, enabled = ok) { Text("Morph") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+    )
 }
