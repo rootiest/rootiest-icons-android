@@ -30,7 +30,7 @@ The app is [icons.rootiest.fyi](https://icons.rootiest.fyi) for a phone, with th
 | **Catalogue** | Every icon, status icon and badge, and emblem, as tiles. The search box filters them and, from three letters, looks through the other sets as well (`cloud`, or `tabler:cloud` for one set). Color, Auto, Dark and Light switch the variant; the chips filter by category or status state. The search box, the variant, the light/dark toggle and the chips stay at the top while the tiles scroll. A card at the top (with an empty search) and a button in the top bar open **Drawn with Math**. |
 | **Light and dark previews** | Auto shows each icon's `auto/` file: the dark and light versions in one SVG that switches with the viewer's mode (an icon without one shows its color version, faded; an emblem shows in white or black). A file that switches by itself (`auto/`, or an `-auto` icon such as `rootiest-id-auto`) has a small auto-brightness badge on its tile. The sun or moon button next to the variant previews every SVG that switches (the auto files, and the color icons, whose emblem takes a deeper shade in light mode) in light or dark mode, with a light or dark background to match; it starts as the app's appearance and keeps its choice for the session. |
 | **Detail** | One icon or emblem: its preview, its details, the variant, the padded twin, and for an emblem whether it is on the logo or alone. With a logo of your own loaded, Rootiest logo or Your logo. Placement (upper right or badge, size, right, down), the five layouts side by side, and the Render panel. The details say how it takes light or dark mode (it follows it, its emblem takes a deeper shade, or the same in both), and a preview that switches has the light/dark toggle in its corner. An icon with an auto file has an Auto variant: the published file only (no other logo or placement), and in place of the Render panel, Save and Share for the SVG (`<icon>-auto[-padded].svg`), since a raster cannot switch. An `-auto` icon says it is SVG only and points to its day and night versions for rasters. |
-| **Render panel** | The colors (a category, a status state, a brand's own, or any hex color, for the whole icon or per part), the layouts, any sizes up to 4096 px, PNG, WebP, ICO and SVG, an animation for the SVG (Draw: it draws itself, once or looping; Heartbeat: a heart monitor's sweep across the emblem; Pulse, Spin, Shake: the emblem breathes, turns or wobbles; Pop: it bounces in, once; Shine: a glint crosses it; and a duration), and a background to flatten onto. Render draws every file; Save writes them to `Downloads/Rootiest Icons`, Share hands one file, or a zip of several, to another app. The command that writes the same files with `render-rootiest-icons` is shown and can be copied. |
+| **Render panel** | The colors (a category, a status state, a brand's own, or any hex color, for the whole icon or per part), the layouts, any sizes up to 4096 px, PNG, WebP, ICO, SVG and GIF, an animation for the SVG, WebP and GIF (Draw: it draws itself, once or looping; Heartbeat: a heart monitor's sweep across the emblem; Pulse, Spin, Shake: the emblem breathes, turns or wobbles; Pop: it bounces in, once; Shine: a glint crosses it; Morph: a published icon or emblem turns into another of the same kind, once or there and back; and a duration), and a background to flatten onto. Render draws every file; Save writes them to `Downloads/Rootiest Icons`, Share hands one file, or a zip of several, to another app. The command that writes the same files with `render-rootiest-icons` is shown and can be copied. |
 | **Your own** | A logo and an emblem of your own, each an SVG from a file or the clipboard, with Keep its colors. They are kept in the app's private storage and never leave the phone. An SVG shared to the app, or opened with it, becomes your emblem. |
 | **Drawn with Math** | The site's interactive article on why SVG ([icons.rootiest.fyi/svg/](https://icons.rootiest.fyi/svg/)), in the app: the page in a WebView, light or dark as the app's appearance is. Its builder's downloads are saved to `Downloads/Rootiest Icons` and its Copy code goes to the clipboard. Back steps back through the page, then to the app; its links home return to the catalogue, other links open in the browser, and the top bar opens it in the browser too. |
 | **Settings** | Appearance (the phone's, light or dark), the preview background, refreshing the catalogue, and About: Drawn with Math, the version, links to the site, the command line tool, the status page (`status.rootiest.dev`), the source code and the privacy policy (`rootiest.com/privacy/icons-app`, the page the Google Play listing links), **Report an issue**, which opens a new support desk ticket (`support.rootiest.dev/new`, the desk's Android app topic) filled in with the app, Android and phone versions for the person to finish and send, and the open-source licenses. |
@@ -44,7 +44,12 @@ What differs from the command line tool:
 - **WebP** is lossless on Android 11 and later; Android 10 writes it at the best lossy quality.
 - **Animations** are written into the SVG, byte for byte as the tool writes them, but not played in the app: AndroidSVG
   draws the still icon, which is also what an animated SVG shows wherever it does not play. Open the saved file in a
-  browser to see it move.
+  browser to see it move. The animated WebP and GIF hold the same frames as the tool's (25 a second, a run of
+  identical frames kept as one), each drawn by AndroidSVG and put together here rather than by ImageMagick, so the
+  files' bytes differ. A GIF has a palette of its own per frame and no partial transparency.
+- **Morph** here turns a published icon or emblem, as published, into another published one. The tool can also morph
+  an icon built on your logo or placed elsewhere, or one from another set; the app points to the command line for
+  those.
 
 ## Where its data comes from
 
@@ -83,6 +88,8 @@ Two Gradle modules:
 | `Iconify.kt` | `icon_data`, `icon_svg`, `external_name` |
 | `Files.kt` | `stem_of`, `planned`, `layouts_of`, `resolve`, `single_layout_svg`, the ICO and zip writers, and `schemeSvg`/`switches` (an SVG that switches with light or dark mode, fixed to one) |
 | `Animate.kt` | `animate_svg` (every `--animate`), `animation_tag` |
+| `Morph.kt` | `morph_svg` (`--animate morph`): the emblems' shapes as polygons, paired, aligned and morphed, the rest cross-faded |
+| `Frames.kt` | `frame_svg` and `frame_times`: an animated SVG's values at one moment, as a still SVG for a frame |
 
 `:app` (`app/src/main/java/dev/rootiest/icons/`):
 
@@ -92,6 +99,7 @@ Two Gradle modules:
 | `data/Settings.kt` | The settings, and your own logo and emblem |
 | `render/Svg.kt` | Draws SVG text to a bitmap, and measures what a body draws |
 | `render/Output.kt` | The files of a render; saving and sharing them |
+| `render/Animated.kt` | Animated WebP (frames in a VP8X/ANIM container) and GIF (a palette per frame, LZW) from frames |
 | `Studio.kt` | Turns a subject (an icon, an emblem, a name from another set, your file) and the screen's choices into the SVG, the file names and the command |
 | `IconsViewModel.kt` | The app's state: the catalogue, the search, your files, the stack of screens |
 | `ui/` | The screens (`CatalogueScreen`, `DetailScreen`, `RenderPanel`, `OwnScreen`, `SettingsScreen`, `LicensesScreen`, `ArticleScreen`), their shared pieces (`Components`) and the theme |
@@ -105,7 +113,7 @@ soon as it goes on your logo or is placed elsewhere, exactly when `render-rootie
 (`core/src/test/kotlin/.../FixturesTest.kt`) compare it with `core/src/test/resources/fixtures.json`, which
 `scripts/make-fixtures.py` writes by running rootiest-icons' own code: recolorings, shades of hex colors, built icons
 (both placements, nudges, your own logos, published rows with two tones), emblems alone, files of your own, Iconify
-data, file names, layouts and number formatting. Long expected outputs are stored as SHA-256 hashes.
+data, file names, layouts, number formatting, every animation and morph, and the animated rasters' frame counts. Long expected outputs are stored as SHA-256 hashes.
 
 When rootiest-icons changes how it builds an icon, port the change to `:core`, then run
 `scripts/make-fixtures.py` (it reads a rootiest-icons checkout: `$ROOTIEST_ICONS_DIR`, or
@@ -126,10 +134,14 @@ drawing does not depend on how a renderer orders the cascade. An emblem is measu
 Named as `render-rootiest-icons` names them:
 
 ```text
-<icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>]-<size>px.<png|webp>
+<icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>]-<size>px.<png|webp|gif>
 <icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>].<ico|svg>
-<icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>]-<draw[-loop]|heartbeat>[-<duration>s].svg
+<icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>]-<animation>[-<duration>s].svg
+<icon>[-emblem]-<variant>[-<colors>][-padded][-layout-<layout>]-<animation>[-<duration>s]-<size>px.<webp|gif>
 ```
+
+where `<animation>` is `draw[-loop]`, `heartbeat`, `pulse`, `spin`, `shake`, `pop`, `shine` or
+`morph-<target>[-loop]`. With an animation the WebP and GIF are animated, and PNG and ICO stay still.
 
 Save puts them in `Downloads/Rootiest Icons` through MediaStore, which needs no permission. Share writes them to the
 app's cache and hands them over through a FileProvider (`<applicationId>.files`).

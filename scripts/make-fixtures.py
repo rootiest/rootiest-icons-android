@@ -211,15 +211,18 @@ def main():
                 layouts = [["auto"], ["auto", "full", 16], [48, 24]][(i + len(o)) % 3]
                 sizes, formats = [[256], [16, 32, 48], [1024, 64]][i % 3], [["png"], ["png", "webp", "ico", "svg"], ["svg", "ico"]][len(o) % 3]
                 animate, loop, duration = [("none", False, None), ("draw", False, None), ("draw", True, None), ("draw", True, 6.5),
-                                           ("heartbeat", False, None), ("heartbeat", False, 1.25)][(i + len(o) + len(variant)) % 6]
+                                           ("heartbeat", False, None), ("heartbeat", False, 1.25), ("morph", True, 3.5),
+                                           ("morph", False, None)][(i + len(o) + len(variant)) % 8]
+                morph_to = "rootiest:tabler:heart" if animate == "morph" else None
+                formats = formats + ["gif"] if animate != "none" and "webp" in formats else formats
                 a = SimpleNamespace(icon=stem, stem_name=stem, emblem=is_emblem, variant=variant, padded=padded and not is_emblem,
                                     color=o.get("color"), logo_color=o.get("logo"), emblem_color=o.get("emblem"),
                                     tone2_color=o.get("tone2"), layouts=layouts, sizes=sizes, formats=formats, out="",
-                                    animate=animate, loop=loop, duration=duration)
+                                    animate=animate, loop=loop, duration=duration, morph_to=morph_to)
                 plans.append({"stem": stem, "emblem": is_emblem, "variant": variant, "padded": a.padded,
                               "o": {k: spec_js(o.get(k)) for k in ("color", "logo", "emblem", "tone2")},
                               "layouts": [str(v) for v in layouts], "sizes": sizes, "formats": formats,
-                              "animate": animate, "loop": loop, "duration": duration, "want": ri.planned(a)})
+                              "animate": animate, "loop": loop, "duration": duration, "morphTo": morph_to, "want": ri.planned(a)})
 
     # Layouts: one kept, as the CLI's --layout N --format svg.
     icon = read("icons", "color", "rootiest-gitea.svg")
@@ -257,8 +260,27 @@ def main():
              for t in sources for an, d, lp in timings[:9]] + \
             [{"text": key(t), "animate": an, "duration": d, "loop": lp, "want": sha(ri.animate_svg(t, an, d, lp))}
              for t in sources[:3] for an, d, lp in timings[9:]]
-    anim_tags = [{"animate": an, "loop": lp, "duration": d, "want": ri.animation_tag(SimpleNamespace(animate=an, loop=lp, duration=d))}
-                 for an in ri.ANIMATIONS for lp in (False, True) for d in (None, 1.0, 0.25, 12.5)]
+    anim_tags = [{"animate": an, "loop": lp, "duration": d, "morphTo": "rootiest:tabler:heart" if an == "morph" else None,
+                  "want": ri.animation_tag(SimpleNamespace(animate=an, loop=lp, duration=d,
+                                                           morph_to="rootiest:tabler:heart" if an == "morph" else None)),
+                  # the animated rasters' frames: how many, the last moment, and whether it plays once
+                  "frames": (lambda t: [len(t[0]), t[0][-1], t[1]])(ri.frame_times(SimpleNamespace(animate=an, loop=lp, duration=d)))}
+                 for an in ri.ANIMATIONS if an != "none" for lp in (False, True) for d in (None, 1.0, 0.25, 12.5, 2.5, 0.7)]
+    # Morphs, as rootiest-icons' check-site-colors.py makes them: published icons, padded dark, badges, one layout,
+    # emblems in their own units, the logo both ways, built icons; once and there and back.
+    morph_sets = [(read("icons", "color", "rootiest-gitea.svg"), read("icons", "color", "rootiest-home.svg")),
+                  (read("icons", "color", "rootiest-notes.svg"), read("icons", "color", "rootiest-chat.svg")),
+                  (read("icons", "dark", "padded", "rootiest-lock.svg"), read("icons", "dark", "padded", "rootiest-id.svg")),
+                  (read("icons", "color", "icon-ok-circle.svg"), read("icons", "color", "icon-bad-triangle.svg")),
+                  (read("icons", "emblems", "heart.svg"), read("icons", "emblems", "status.svg")),
+                  (read("icons", "emblems", "sync.svg"), read("icons", "emblems", "gitea.svg")),
+                  (read("icons", "color", "logo.svg"), read("icons", "color", "rootiest-files.svg")),
+                  (single_layout(read("icons", "color", "rootiest-vault.svg"), 24), single_layout(read("icons", "color", "rootiest-mail.svg"), 24))]
+    morph_sets += [(ri.built_svg(built_emblems[0], None, "color", False, places[0]),
+                    ri.built_svg(built_emblems[1], None, "color", False, places[1]))]
+    anims += [{"text": key(a), "target": key(b), "animate": "morph", "duration": d, "loop": lp,
+               "want": sha(ri.animate_svg(a, "morph", d, lp, b))}
+              for i, (a, b) in enumerate(morph_sets) for lp, d in ((False, None), (True, 2.5 + i % 3))]
 
     # Number formatting: Python's own.
     values = [0.5, 1952.8125, 1952.8135, 0.125, -0.125, -0.0005, 2.5, 1.005, 12345.6789, 1e-7, 123456789.0, 0.0001234, 100.0,

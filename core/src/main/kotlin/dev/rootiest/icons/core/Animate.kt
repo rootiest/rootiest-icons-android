@@ -9,7 +9,7 @@ import kotlin.math.sqrt
 // pop move the emblem as a whole; shine sweeps a white glint across it. Each way the icon as it is shows wherever the
 // animation does not play.
 
-val ANIMATIONS = listOf("none", "draw", "heartbeat", "pulse", "spin", "shake", "pop", "shine")
+val ANIMATIONS = listOf("none", "draw", "heartbeat", "pulse", "spin", "shake", "pop", "shine", "morph")
 
 // Default seconds: the whole drawing, one cycle of a looping drawing, one beat.
 const val DRAW_ONCE = 2.5
@@ -31,6 +31,7 @@ private val MOTIONS = mapOf(
 // render-icon.py default_duration(): an animation's seconds when none is given.
 fun defaultDuration(animate: String, loop: Boolean = false): Double = when (animate) {
     "draw" -> if (loop) DRAW_LOOP else DRAW_ONCE
+    "morph" -> if (loop) MORPH_LOOP else MORPH_ONCE
     "heartbeat" -> HEARTBEAT
     "shine" -> SHINE
     else -> MOTIONS[animate]?.seconds ?: DRAW_ONCE
@@ -249,10 +250,11 @@ private fun shineSvg(svgText: String, duration: Double): String {
 }
 
 // render-icon.py animate_svg(): the SVG in an animation, duration null for its default; none leaves it as it is.
-fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Boolean = false): String {
+fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Boolean = false, target: String? = null): String {
     val d = duration ?: defaultDuration(animate, loop)
     return when (animate) {
         "draw" -> animatedSvg(text, d, loop)
+        "morph" -> if (target != null) morphSvg(text, target, d, loop) else text
         "heartbeat" -> heartbeatSvg(text, d)
         "shine" -> shineSvg(text, d)
         in MOTIONS -> motionSvg(text, animate, d)
@@ -260,8 +262,10 @@ fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Bo
     }
 }
 
-// render-icon.py animation_tag(): -draw, -draw-loop, -draw-loop-6s, -heartbeat, -heartbeat-1.2s; "" when still.
-fun animationTag(animate: String, loop: Boolean, duration: Double?): String {
+// render-icon.py animation_tag(): -draw, -draw-loop, -draw-loop-6s, -heartbeat, -heartbeat-1.2s, -morph-<target>[-loop];
+// "" when still.
+fun animationTag(animate: String, loop: Boolean, duration: Double?, morphTo: String? = null): String {
     if (animate == "none") return ""
-    return "-$animate" + (if (animate == "draw" && loop) "-loop" else "") + (duration?.let { "-${fmtG(it)}s" } ?: "")
+    return "-$animate" + (if (animate == "morph") "-${slug(morphTo ?: "")}" else "") +
+        (if ((animate == "draw" || animate == "morph") && loop) "-loop" else "") + (duration?.let { "-${fmtG(it)}s" } ?: "")
 }

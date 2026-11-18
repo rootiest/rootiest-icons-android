@@ -136,7 +136,8 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
     // a file that follows light or dark mode by itself: auto/, or an -auto icon
     val autoFile = auto || (subject is IconSubject && c.variant == "color" && subject.entry.name.endsWith("-auto"))
     // only what changes the picture: the output choices below do not draw it again
-    val picture = c.copy(layouts = emptyList(), sizes = emptyList(), formats = emptyList(), background = null)
+    val picture = c.copy(layouts = emptyList(), sizes = emptyList(), formats = emptyList(), background = null,
+        animate = "none", loop = false, duration = null, morphTo = null)
     val drawn by produceState<Result<Drawn>?>(null, s, picture, logo) {
         value = runCatching { studio.draw(s, c, logo, vm.ownEmblem.file) }
     }

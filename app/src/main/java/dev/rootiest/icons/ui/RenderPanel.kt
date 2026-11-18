@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -49,6 +50,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.rootiest.icons.Choices
 import dev.rootiest.icons.Drawn
+import dev.rootiest.icons.EmblemSubject
+import dev.rootiest.icons.IconSubject
 import dev.rootiest.icons.IconsViewModel
 import dev.rootiest.icons.R
 import dev.rootiest.icons.Source
@@ -56,6 +59,7 @@ import dev.rootiest.icons.commandLine
 import dev.rootiest.icons.core.ColorSpec
 import dev.rootiest.icons.core.Colors
 import dev.rootiest.icons.core.ANIMATIONS
+import dev.rootiest.icons.core.FPS
 import dev.rootiest.icons.core.colorSpec
 import dev.rootiest.icons.core.defaultDuration
 import dev.rootiest.icons.core.fmtG
@@ -88,7 +92,31 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
     var sizesText by remember(s) { mutableStateOf(c.sizes.joinToString(", ")) }
     var durationText by remember(s) { mutableStateOf(c.duration?.let { fmtG(it) } ?: "") }
     val durationOk = durationText.isBlank() || durationText.trim().toDoubleOrNull()?.let { it in 0.2..60.0 } == true
-    val animation = Animation(c.animate, c.loop && c.animate == "draw", c.duration)
+    val studio = (vm.catalogue as dev.rootiest.icons.Catalogue.Ready).studio
+    // Morphing here: a published icon or emblem, as published, into another of the same kind (render-icon.py builds
+    // the target as the icon is built; here that is the published file, in this variant and these colors).
+    val subject = s.subject
+    val morphable = (subject is IconSubject && !c.mine && !c.placedElsewhere && c.variant != "auto") || (subject is EmblemSubject && !c.whole)
+    val targets = when {
+        !morphable -> emptyList()
+        subject is IconSubject -> studio.index.icons.filter { it.name != subject.entry.name && c.variant in it.variants && (!c.padded || it.padded) }.map { it.name }
+        subject is EmblemSubject -> studio.index.emblems.filter { it.name != subject.entry.name }.map { it.name }
+        else -> emptyList()
+    }
+    val target by produceState<String?>(null, c.morphTo, c.animate, c.variant, c.padded, c.colors, morphable) {
+        value = null
+        val name = c.morphTo
+        if (c.animate != "morph" || !morphable || name == null) return@produceState
+        value = runCatching {
+            val ts = when (subject) {
+                is IconSubject -> studio.load(IconSubject(studio.index.icons.first { it.name == name }), null)
+                else -> studio.load(EmblemSubject(studio.index.emblems.first { it.name == name }), null)
+            }
+            studio.draw(ts, c, null, null).text
+        }.getOrNull()
+    }
+    val looping = c.animate == "draw" || c.animate == "morph"
+    val animation = Animation(c.animate, c.loop && looping, c.duration, c.morphTo.takeIf { c.animate == "morph" }, target)
     var results by remember(d.text, c) { mutableStateOf<List<Rendered>?>(null) }
     var busy by remember { mutableStateOf(false) }
     val stem = stemOf(d.stemBase, d.isEmblem, c.variant, c.padded && !d.isEmblem, d.shown ?: dev.rootiest.icons.core.ColorOptions())
@@ -100,7 +128,10 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
         layouts.isEmpty() -> "Pick at least one layout."
         "ico" in c.formats && c.sizes.max() > ICO_MAX -> "An .ico holds sizes up to $ICO_MAX px: drop the larger sizes or ICO."
         c.background != null && parseColor(c.background) == null -> "The background is not a color like #1e1e2e."
-        c.animate != "none" && "svg" !in c.formats -> "Animation plays in the SVG only: pick SVG (the other formats stay still)."
+        c.animate != "none" && c.formats.none { it in setOf("svg", "webp", "gif") } -> "Animation plays in the SVG, WebP and GIF: pick one of them."
+        c.animate == "morph" && !morphable -> "Morphing here works on the published icons and emblems as published; use the command line for this one."
+        c.animate == "morph" && c.morphTo == null -> "Pick an icon to morph into."
+        c.animate == "morph" && target == null -> "Getting ${c.morphTo}…"
         !durationOk -> "A duration is a number of seconds from 0.2 to 60."
         else -> null
     }
@@ -145,17 +176,20 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
                 )
             }
             Field("Formats") {
-                Chips(listOf("png", "webp", "ico", "svg"), c.formats, mapOf("png" to "PNG", "webp" to "WebP", "ico" to "ICO", "svg" to "SVG")) { change(c.copy(formats = it)) }
+                Chips(listOf("png", "webp", "ico", "svg", "gif"), c.formats, mapOf("png" to "PNG", "webp" to "WebP", "ico" to "ICO", "svg" to "SVG", "gif" to "GIF")) { change(c.copy(formats = it)) }
+                if (c.animate != "none" && ("webp" in c.formats || "gif" in c.formats)) {
+                    Text("WebP and GIF are animated, $FPS frames a second; PNG and ICO stay still.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+                }
             }
-            Field("Animation (SVG)") {
+            Field("Animation") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ANIMATIONS.forEach { a ->
                             FilterChip(
                                 selected = c.animate == a,
                                 onClick = {
-                                    change(c.copy(animate = a, loop = c.loop && a == "draw",
-                                        formats = if (a != "none" && "svg" !in c.formats) c.formats + "svg" else c.formats))
+                                    change(c.copy(animate = a, loop = c.loop && (a == "draw" || a == "morph"),
+                                        formats = if (a != "none" && c.formats.none { it in setOf("svg", "webp", "gif") }) c.formats + "svg" else c.formats))
                                 },
                                 label = { Text(a.replaceFirstChar(Char::uppercase)) },
                                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = palette.Surface0, selectedLabelColor = palette.Text),
@@ -171,12 +205,24 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, ch
                                 "spin" -> "The emblem turns, again and again (best for round ones)."
                                 "shake" -> "The emblem wobbles, then rests, again and again."
                                 "pop" -> "The emblem bounces in, once."
+                                "morph" -> "It turns into another icon: the emblem's shapes morph, the rest cross-fades; once, or there and back."
                                 else -> "A white glint crosses the emblem now and then."
                             },
                             style = MaterialTheme.typography.bodySmall, color = palette.Subtext0,
                         )
+                        if (c.animate == "morph" && morphable) {
+                            var open by remember { mutableStateOf(false) }
+                            Box {
+                                OutlinedButton(onClick = { open = true }) { Text(c.morphTo?.let { "Into ${it.removePrefix("rootiest-")}" } ?: "Morph into…") }
+                                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                                    targets.forEach { t ->
+                                        DropdownMenuItem(text = { Text(t.removePrefix("rootiest-")) }, onClick = { open = false; change(c.copy(morphTo = t)) })
+                                    }
+                                }
+                            }
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (c.animate == "draw") {
+                            if (looping) {
                                 Switch(checked = c.loop, onCheckedChange = { change(c.copy(loop = it)) })
                                 Text("Loop", Modifier.padding(end = 8.dp))
                             }
