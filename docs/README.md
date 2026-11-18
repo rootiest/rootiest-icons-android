@@ -88,7 +88,7 @@ Two Gradle modules:
 | `Iconify.kt` | `icon_data`, `icon_svg`, `external_name` |
 | `Files.kt` | `stem_of`, `planned`, `layouts_of`, `resolve`, `single_layout_svg`, the ICO and zip writers, and `schemeSvg`/`switches` (an SVG that switches with light or dark mode, fixed to one) |
 | `Animate.kt` | `animate_svg` (every `--animate`), `animation_tag` |
-| `Morph.kt` | `morph_svg` (`--animate morph`): the emblems' shapes as polygons, paired, aligned and morphed, the rest cross-faded |
+| `Morph.kt` | `morph_svg` (`--animate morph`): the emblems' shapes as polygons (each tone apart), paired, aligned and morphed, the rest cross-faded |
 | `Frames.kt` | `frame_svg` and `frame_times`: an animated SVG's values at one moment, as a still SVG for a frame |
 
 `:app` (`app/src/main/java/dev/rootiest/icons/`):
