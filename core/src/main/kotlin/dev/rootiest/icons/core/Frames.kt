@@ -2,7 +2,6 @@ package dev.rootiest.icons.core
 
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 // Animated rasters: an animated SVG's frames, as render-icon.py's frame_svg() makes them for librsvg, made here for
