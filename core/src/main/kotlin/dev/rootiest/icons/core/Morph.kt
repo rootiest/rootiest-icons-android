@@ -10,8 +10,8 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 // render-icon.py's morphing (--animate morph --morph-to): the emblems' filled shapes in the emblem color, flattened to
-// polygons, resampled, paired and aligned, drawn by one path while the icon turns into the target; the rest
-// cross-fades. Its arithmetic is render-icon.py's to the last bit: trigonometry from + - * / sqrt and floor, plain sums.
+// polygons, resampled, paired and aligned, drawn by one path while the icon turns into the target, and those in its
+// second tone by another under it; the rest cross-fades, the incoming side in before the outgoing one goes. Its arithmetic is render-icon.py's to the last bit: trigonometry from + - * / sqrt and floor, plain sums.
 
 const val MORPH_ONCE = 1.2
 const val MORPH_LOOP = 4.0
@@ -300,11 +300,13 @@ private fun presentation(attrs: String, name: String): String? {
     return m?.groupValues?.get(1)?.trim() ?: getAttr(attrs, name)
 }
 
-// render-icon.py emblem_shapes(): the filled shapes in the emblem color as polygons, and the text with them marked.
-private fun emblemShapes(text: String): Pair<String, List<List<Pt>>> {
+// render-icon.py emblem_shapes(): the filled shapes in the emblem color as polygons, those in its second tone apart, and
+// the text with all of them marked.
+private fun emblemShapes(text: String): Triple<String, List<List<Pt>>, List<List<Pt>>> {
     class F(val fill: String, val stroke: String, val mat: List<Double>, val hidden: Boolean, val emblem: Boolean, val other: Boolean)
     val stack = ArrayDeque(listOf(F("black", "none", IDENTITY, false, false, false)))
     val polys = ArrayList<List<Pt>>()
+    val polys2 = ArrayList<List<Pt>>()
     val marked = TAG.replace(text) { m ->
         val (closing, name, attrs, empty) = m.destructured
         if (closing.isNotEmpty()) {
@@ -320,19 +322,19 @@ private fun emblemShapes(text: String): Pair<String, List<List<Pt>>> {
         val emblem = top.emblem || "ColorScheme-Emblem" in cls
         val other = top.other || "ColorScheme-Emblem2" in cls || "data-tone=\"2\"" in attrs
         if (empty.isEmpty()) stack.addLast(F(fill, stroke, mat, hidden, emblem, other))
-        if (hidden || other || !emblem || name !in DRAWN_SHAPES || fill != "currentColor" || stroke !in setOf("none", "transparent")) {
+        if (hidden || !emblem || name !in DRAWN_SHAPES || fill != "currentColor" || stroke !in setOf("none", "transparent")) {
             return@replace m.value
         }
         val d = if (name == "path") getAttr(attrs, "d") else shapeD(name, attrs)
         val (a, b, c, dd, e) = mat
         val f = mat[5]
-        for (sub in pathSubpaths(d)) polys += sub.map { (px, py) -> (a * px + c * py + e) to (b * px + dd * py + f) }
+        for (sub in pathSubpaths(d)) (if (other) polys2 else polys) += sub.map { (px, py) -> (a * px + c * py + e) to (b * px + dd * py + f) }
         val trimmed = attrs.trimEnd()
         val tail = attrs.substring(trimmed.length)
         val old = getAttr(trimmed, "class")
         "<$name${setAttr(trimmed, "class", (if (old != null) "$old " else "") + "morph-main")}$tail$empty>"
     }
-    return marked to polys
+    return Triple(marked, polys, polys2)
 }
 
 private fun polyArea(p: List<Pt>): Double {
@@ -396,17 +398,18 @@ private fun aligned(a: List<Pt>, b: List<Pt>): List<Pt> {
     return b.subList(shift, n) + b.subList(0, shift)
 }
 
-private fun morphPairs(pa0: List<List<Pt>>, pb0: List<List<Pt>>): List<Pair<List<Pt>, List<Pt>>> {
+// alone: a second tone, which may be on one side only; its shapes then grow or shrink.
+private fun morphPairs(pa0: List<List<Pt>>, pb0: List<List<Pt>>, alone: Boolean = false): List<Pair<List<Pt>, List<Pt>>> {
     val pa = pa0.filter { it.size > 2 && abs(polyArea(it)) > 1e-9 }
     var pb = pb0.filter { it.size > 2 && abs(polyArea(it)) > 1e-9 }
-    if (pa.isEmpty() || pb.isEmpty()) return emptyList()
+    if ((pa.isEmpty() && pb.isEmpty()) || (!alone && (pa.isEmpty() || pb.isEmpty()))) return emptyList()
     fun bySize(ps: List<List<Pt>>): List<List<Pt>> {
         if (ps.isEmpty()) return ps
         var top = 0.0
         for (p in ps) top = max(top, abs(polyArea(p)))
         return ps.withIndex().sortedWith(compareBy({ -floor(abs(polyArea(it.value)) / top * 1e6 + 0.5) }, { it.index })).map { it.value }
     }
-    if ((polyArea(bySize(pa)[0]) > 0) != (polyArea(bySize(pb)[0]) > 0)) pb = pb.map { it.reversed() }
+    if (pa.isNotEmpty() && pb.isNotEmpty() && (polyArea(bySize(pa)[0]) > 0) != (polyArea(bySize(pb)[0]) > 0)) pb = pb.map { it.reversed() }
     val pairs = ArrayList<Pair<List<Pt>, List<Pt>>>()
     for (sign in listOf(true, false)) {
         val sa = bySize(pa.filter { (polyArea(it) > 0) == sign })
@@ -423,11 +426,11 @@ private fun morphPairs(pa0: List<List<Pt>>, pb0: List<List<Pt>>): List<Pair<List
 private fun morphD(polys: List<List<Pt>>, places: Int) =
     polys.joinToString("") { p -> "M" + p.joinToString("L") { "${pyFixed(it.first, places)} ${pyFixed(it.second, places)}" } + "Z" }
 
-private fun emblemColors(text: String): Pair<String, String>? {
+private fun emblemColors(text: String, part: String = "Emblem"): Pair<String, String>? {
     val css = Regex("<style id=\"current-color-scheme\"[^>]*>([\\s\\S]*?)</style>").find(text)?.groupValues?.get(1) ?: ""
     val media = Regex("@media \\(prefers-color-scheme: light\\)\\{([\\s\\S]*)\\}").find(css)
     val base = if (media != null) css.substring(0, media.range.first) else css
-    val rule = Regex("\\.ColorScheme-Emblem\\{color:(#[0-9a-fA-F]+)\\}")
+    val rule = Regex("\\.ColorScheme-$part\\{color:(#[0-9a-fA-F]+)\\}")
     val dark = rule.find(base)?.groupValues?.get(1) ?: return null
     val light = media?.let { rule.find(it.groupValues[1])?.groupValues?.get(1) }
     return dark to (light ?: dark)
@@ -478,8 +481,14 @@ fun morphSvg(svgText: String, targetText: String, duration: Double, loop: Boolea
     val keys = if (loop) listOf(0.0, hold / 2, 0.5, 0.5 + hold / 2, 1.0) else listOf(0.0, hold, 1.0)
     val sides = if (loop) "aabba" else "aab"
     val eps = 0.0001
-    val aFrames = keys.mapIndexed { i, k -> k to if (sides[i] == 'a') 1 else 0 }
-    val bFrames = aFrames.map { it.first to 1 - it.second }
+    // The icons' cross-fade: through each change the incoming side comes in by its middle while the outgoing one stays,
+    // and the outgoing one goes after it, so where both draw (the logo) nothing dims.
+    fun faded(side: Char) = keys.indices.flatMap { i ->
+        listOf(keys[i] to if (sides[i] == side) 1 else 0) +
+            if (i + 1 < keys.size && sides[i + 1] != sides[i]) listOf((keys[i] + keys[i + 1]) / 2 to 1) else emptyList()
+    }
+    val aFrames = faded('a')
+    val bFrames = faded('b')
     // Opacity points from a value per stretch between keys and one for the last key: at each change the incoming
     // shape is fully shown by the key and the outgoing one fades just after it; at the last key, where the timeline
     // ends, they cross just before it.
@@ -505,26 +514,38 @@ fun morphSvg(svgText: String, targetText: String, duration: Double, loop: Boolea
     fun lookup(cls: String?) = (lb.firstOrNull { it.first == cls && it.second.isNotEmpty() }
         ?: lb.firstOrNull { it.first == "SizeFull" && it.second.isNotEmpty() } ?: lb.firstOrNull() ?: (null to "")).second
     val out = StringBuilder()
+    var toned = false
+    // The path that draws the emblems' shapes in one tone while they move.
+    fun morphPath(cls: String, pairs: List<Pair<List<Pt>, List<Pt>>>): String {
+        if (pairs.isEmpty()) return ""
+        val da = morphD(pairs.map { it.first }, places)
+        val db = morphD(pairs.map { it.second }, places)
+        val values = sides.map { if (it == 'a') da else db }
+        val splines = (0 until keys.size - 1).joinToString(";") { if (it % 2 == 0) "0 0 1 1" else MORPH_EASE }
+        return "<path class=\"$cls\" fill=\"currentColor\" d=\"$da\"><animate attributeName=\"d\" " +
+            "dur=\"${fmtG(duration)}s\" repeatCount=\"${if (loop) "indefinite" else "1"}\" fill=\"freeze\" calcMode=\"spline\" " +
+            "keyTimes=\"${keys.joinToString(";") { fmtG(it) }}\" keySplines=\"$splines\" values=\"${values.joinToString(";")}\"/></path>"
+    }
     for ((cls, aInner) in la) {
         var bInner = lookup(cls)
-        val (aMarked0, polysA) = emblemShapes(aInner)
-        val (bMarked0, polysB0) = emblemShapes(bInner)
+        val (aMarked0, polysA, polys2A) = emblemShapes(aInner)
+        val (bMarked0, polysB0, polys2B0) = emblemShapes(bInner)
         val (fa, fb, fc, fd, fe) = fit
         val ff = fit[5]
-        val polysB = polysB0.map { p -> p.map { (x, y) -> (fa * x + fc * y + fe) to (fb * x + fd * y + ff) } }
+        val fitted = { ps: List<List<Pt>> -> ps.map { p -> p.map { (x, y) -> (fa * x + fc * y + fe) to (fb * x + fd * y + ff) } } }
+        val polysB = fitted(polysB0)
+        val polys2B = fitted(polys2B0)
         var aMarked = aMarked0
         var bMarked = renamedTarget(bMarked0, bIds, "-to")
         bInner = renamedTarget(bInner, bIds, "-to")
         val pairs = morphPairs(polysA, polysB)
+        // The second tone morphs only beside the first: without that, the emblems cross-fade whole.
+        val pairs2 = if (pairs.isNotEmpty()) morphPairs(polys2A, polys2B, alone = true) else emptyList()
+        toned = toned || pairs2.isNotEmpty()
         var path = ""
         if (pairs.isNotEmpty()) {
-            val da = morphD(pairs.map { it.first }, places)
-            val db = morphD(pairs.map { it.second }, places)
-            val values = sides.map { if (it == 'a') da else db }
-            val splines = (0 until keys.size - 1).joinToString(";") { if (it % 2 == 0) "0 0 1 1" else MORPH_EASE }
-            path = "<path class=\"morph-path\" fill=\"currentColor\" d=\"$da\"><animate attributeName=\"d\" " +
-                "dur=\"${fmtG(duration)}s\" repeatCount=\"${if (loop) "indefinite" else "1"}\" fill=\"freeze\" calcMode=\"spline\" " +
-                "keyTimes=\"${keys.joinToString(";") { fmtG(it) }}\" keySplines=\"$splines\" values=\"${values.joinToString(";")}\"/></path>"
+            // the second tone under the first, as the emblems draw it (gitea's teabag shows through the cup)
+            path = morphPath("morph-path2", pairs2) + morphPath("morph-path", pairs)
         } else {
             aMarked = aInner
             bMarked = bInner
@@ -540,13 +561,20 @@ fun morphSvg(svgText: String, targetText: String, duration: Double, loop: Boolea
     val cb0 = emblemColors(bText)
     val ca = ca0 ?: cb0 ?: ("#000000" to "#000000")
     val cb = cb0 ?: ca0 ?: ("#000000" to "#000000")
+    // The second tone's: a side without one takes the other's, as its shapes come from or go to a point.
+    val c2a0 = emblemColors(aText, "Emblem2")
+    val c2b0 = emblemColors(bText, "Emblem2")
+    val c2a = c2a0 ?: c2b0 ?: ca
+    val c2b = c2b0 ?: c2a0 ?: cb
     val count = if (loop) "infinite" else "1"
     val dur = fmtG(duration)
-    fun color(w: String) = "@keyframes morph-color-$w{" + keys.mapIndexed { i, k ->
-        val c = if (sides[i] == 'a') ca else cb
-        "${pyFixed(100 * k, 2)}%{color:${if (w == "light") c.second else c.first}}"
-    }.joinToString("") + "}"
-    val css = "$bCss.morph-b,.morph-path{opacity:0}" +
+    fun color(w: String, n: String = "", a: Pair<String, String> = ca, b: Pair<String, String> = cb) =
+        "@keyframes morph-color$n-$w{" + keys.mapIndexed { i, k ->
+            val c = if (sides[i] == 'a') a else b
+            "${pyFixed(100 * k, 2)}%{color:${if (w == "light") c.second else c.first}}"
+        }.joinToString("") + "}"
+    fun two(t: String) = if (toned) t else ""  // what only a second tone adds
+    val css = "$bCss.morph-b,.morph-path${two(",.morph-path2")}{opacity:0}" +
         ".morph-a{animation:morph-a ${dur}s linear $count both}" +
         ".morph-b{animation:morph-b ${dur}s linear $count both}" +
         ".morph-a .morph-main{animation:morph-a-main ${dur}s linear $count both}" +
@@ -555,8 +583,11 @@ fun morphSvg(svgText: String, targetText: String, duration: Double, loop: Boolea
         "morph-color-dark ${dur}s linear $count both}" +
         opacityFrames("morph-a", aFrames) + opacityFrames("morph-b", bFrames) + opacityFrames("morph-a-main", aMain) +
         opacityFrames("morph-b-main", bMain) + opacityFrames("morph-path", moving) + color("dark") + color("light") +
-        "@media (prefers-color-scheme: light){.morph-path{animation-name:morph-path,morph-color-light}}" +
-        "@media (prefers-reduced-motion: reduce){.morph-a,.morph-b,.morph-main,.morph-path{animation:none}}"
+        two(".morph-path2{color:${c2a.first};animation:morph-path ${dur}s linear $count both," +
+            "morph-color2-dark ${dur}s linear $count both}" + color("dark", "2", c2a, c2b) + color("light", "2", c2a, c2b)) +
+        "@media (prefers-color-scheme: light){.morph-path{animation-name:morph-path,morph-color-light}" +
+        two(".morph-path2{animation-name:morph-path,morph-color2-light}") + "}" +
+        "@media (prefers-reduced-motion: reduce){.morph-a,.morph-b,.morph-main,.morph-path" + two(",.morph-path2") + "{animation:none}}"
     val text = aText.substring(0, end) + "\n  <style id=\"animation\" type=\"text/css\">$css</style>"
     var rest = aText.substring(end)
     var defsEnd = rest.indexOf("</defs>")
