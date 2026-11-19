@@ -254,7 +254,7 @@ private fun IconTile(vm: IconsViewModel, e: IconEntry) {
 @Composable
 private fun EmblemTile(vm: IconsViewModel, e: EmblemEntry) {
     val variant = vm.variant
-    // emblems have no auto files: Auto shows them white or black for the preview mode, as Dark and Light do
+    // Auto: white or black for the preview mode, as the auto version (dark and light in one file) shows there
     val dark = previewDark(vm)
     val mono = if (variant == "auto") (if (dark) "dark" else "light") else variant
     val svg by produceState<String?>(null, e.name, mono) {
@@ -263,7 +263,7 @@ private fun EmblemTile(vm: IconsViewModel, e: EmblemEntry) {
             if (mono == "color" || e.keepFill) text else MONO.getValue(mono).let { recolor(text, it.first, it.second) }
         }.getOrNull()
     }
-    Tile(svg, variant, vm, e.name, e.title, e.name, dark = dark) { vm.open(Route.Detail(EmblemSubject(e))) }
+    Tile(svg, variant, vm, e.name, e.title, e.name, dark = dark, badge = variant == "auto" && !e.keepFill) { vm.open(Route.Detail(EmblemSubject(e))) }
 }
 
 // An icon from another set, as its set draws it, in the text color; opens on the logo.

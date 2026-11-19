@@ -80,6 +80,40 @@ def main():
     mono_cases = [{"text": key(read("icons", "emblems", "gitea.svg")), "main": m, "tone2": t,
              "want": sha(ri.recolor(read("icons", "emblems", "gitea.svg"), m, t))} for m, t in ri.MONO.values()]
 
+    # The auto variant: an emblem's dark and light versions in one file (render-icon.py source_text), published ones
+    # with class colors, in hex (gitea), two-toned and kept; and auto_svg() on its own, for the odd shapes it handles
+    # and the pairs it refuses (want null).
+    def auto_of(dark, light):
+        try:
+            return ri.auto_svg(dark, light)
+        except ri.Failure:
+            return None
+    autos = []
+    for name in ("id", "gitea", "home", "status", "gitea-mono", "immich-color", "files"):
+        text = read("icons", "emblems", f"{name}.svg")
+        autos.append({"text": key(text), "want": sha(auto_of(*(ri.recolor(text, *ri.MONO[v]) for v in ("dark", "light"))))})
+    pairs = [
+        ('<svg viewBox="0 0 1 1"><defs id="d"><path id="p"/></defs><path fill="#fff" stroke=\'#000\' class=\'a b\' d="M0 0"/>'
+         '<g style="fill:#fff;stroke:#123456;stroke-width:2"><stop stop-color="#fff"/></g><rect fill="#fff"/></svg>',
+         '<svg viewBox="0 0 1 1"><defs id="d"><path id="p"/></defs><path fill="#000" stroke=\'#000\' class=\'a b\' d="M0 0"/>'
+         '<g style="fill:#000;stroke:#654321;stroke-width:2"><stop stop-color="#000"/></g><rect fill="#000"/></svg>'),
+        ('<svg><defs>\n<style id="current-color-scheme">\n .ColorScheme-Accent{color:#fff}.x { fill:#fff; opacity:.5 }\n</style>'
+         '<style>.y{stroke:#abc}.z{stroke:#abc}</style></defs><circle class="" fill="#fff"/><circle fill="#fff" /></svg>',
+         '<svg><defs>\n<style id="current-color-scheme">\n .ColorScheme-Accent{color:#000}.x { fill:#000; opacity:.5 }\n</style>'
+         '<style>.y{stroke:#abc}.z{stroke:#cba}</style></defs><circle class="" fill="#000"/><circle fill="#000" /></svg>'),
+        ('<svg><defs><style>.a{fill:#fff}</style></defs><path fill="#fff"/></svg>', '<svg><defs><style>.a{fill:#fff}</style></defs><path fill="#000"/></svg>'),
+        ('<svg><defs/><path fill="#fff"/></svg>', '<svg><defs/><path fill="#000"/></svg>'),
+        ('<svg><path fill="#fff"/></svg>', '<svg><path fill="#fff"/></svg>'),
+        ('<svg><path fill="#fff"/></svg>', '<svg><path fill="#000"/><path/></svg>'),
+        ('<svg><path fill="#fff" d="M1 1"/></svg>', '<svg><path fill="#000" d="M2 2"/></svg>'),
+        ('<svg><style>@media (prefers-color-scheme: light){.a{fill:#fff}}</style></svg>',
+         '<svg><style>@media (prefers-color-scheme: light){.a{fill:#000}}</style></svg>'),
+        ('<svg>#fff<path/></svg>', '<svg>#000<path/></svg>'),
+    ]
+    for dark, light in pairs:
+        got = auto_of(dark, light)
+        autos.append({"dark": dark, "light": light, "want": got})
+
     shade_hexes = ["#%06x" % rng.randrange(0x1000000) for _ in range(400)] + hexes
     shades = [{"hex": x, "want": {k: list(v) for k, v in ri.shades(("hex", x)).items()}} for x in shade_hexes]
 
@@ -127,7 +161,7 @@ def main():
         tb = ri.thicken(body, thick) if thick else body
         for k, bbox in enumerate([ri.measured(vb, tb), (0.5, 2.25, 23.0, 4.5), (6.0, 0.0, 3.0, 24.0), (-3.0, -1.5, 30.0, 30.0)]):
             e = emblem(body, bbox, "tabler:x from Tabler Icons by A--B, MIT, via Iconify")
-            for i, (variant, padded) in enumerate((("color", False), ("dark", True), ("light", False))):
+            for i, (variant, padded) in enumerate((("color", False), ("dark", True), ("light", False), ("auto", k % 2 == 1))):
                 add_built(e, logos[(i + k) % len(logos)], variant, padded, places[(i + 2 * k) % len(places)], thick)
                 add_built(e, None, variant, padded, places[0], thick)
             for keep in (False, True):
@@ -140,16 +174,16 @@ def main():
         vb, body = gen.load_emblem(path)
         mono = re.sub(r'\sfill="(?!none")[^"]*"', "", body) if "data-keep-fill" in open(path).read() else None
         e = emblem(body, ri.measured(vb, body), f"the {row.emblem} emblem", row.color, row.color2, row.grey2, row.nudge, mono)
-        for i, variant in enumerate(("color",) if row.color_only else ("color", "dark", "light")):
+        for i, variant in enumerate(("color",) if row.color_only else ("color", "dark", "light", "auto")):
             add_built(e, logos[1 + i % 3], variant, i == 1, places[i % len(places)])
             add_built(e, None, variant, False, places[(i + 1) % len(places)])
     vb, body = gen.load_emblem(os.path.join(ri.ICONS, "emblems", "gitea.svg"))
     for color, color2, grey2 in (("@storage", None, "mid"), ("#123456", "#fedcba", None), ("@infra/warn", "#ffffff", "mid")):
         e = emblem(body, ri.measured(vb, body), "the gitea emblem", color, color2, grey2, (1.1, -20.0, 35.5))
-        for i, variant in enumerate(("color", "dark", "light")):
+        for i, variant in enumerate(("color", "dark", "light", "auto")):
             add_built(e, logos[i % len(logos)], variant, i == 2, places[(i + 3) % len(places)])
     for logo in logos[1:]:
-        for variant, padded in (("color", False), ("dark", True), ("light", False)):
+        for variant, padded in (("color", False), ("dark", True), ("light", False), ("auto", False), ("auto", True)):
             add_built(None, logo, variant, padded, places[0])
 
     # Files of your own: fitting, preparing the text, cleaning, names.
@@ -294,7 +328,7 @@ def main():
              [rng.randrange(-80000, 80000) / 16 for _ in range(200)]
     numbers = [{"x": v, "f3": f"{v:.3f}", "f4": f"{v:.4f}", "g": f"{v:g}", "g4": f"{v:.4g}", "js": ri.js_num(v)} for v in values]
 
-    out = {"colors": colors, "cfg": cfg, "recolor": recolor, "mono": mono_cases, "shades": shades, "built": built, "alone": alone,
+    out = {"colors": colors, "cfg": cfg, "recolor": recolor, "mono": mono_cases, "autos": autos, "shades": shades, "built": built, "alone": alone,
            "own": own, "texts": texts, "icondata": icondata, "plans": plans, "layouts": layouts, "numbers": numbers,
            "anims": anims, "animTags": anim_tags}
     path = os.path.join(HERE, "core", "src", "test", "resources", "fixtures.json")

@@ -121,12 +121,25 @@ fun compose(cfg: ComposeConfig, logoVb: String, body: String, places: List<Place
         "    <style id=\"sizes\" type=\"text/css\">${cfg.sizeCss}</style>$masks\n  </defs>$groups\n</svg>\n"
 }
 
+// render-icon.py icon_colors(): a variant's colors, from index.json's table. Auto is the dark ones, with the light
+// ones for light mode (emblem, tone 2, logo), as the generator writes the published auto/ files.
+fun variantColors(colors: VariantColors, variant: String, twoTone: Boolean): ColorSet {
+    val i = if (twoTone) 1 else 0
+    if (variant != "auto") return colors.getValue(variant)[i]
+    val d = colors.getValue("dark")[i]
+    val l = colors.getValue("light")[i]
+    return ColorSet(d.logo, d.emblem, d.emblem2, listOf(l.emblem, l.emblem2, l.logo))
+}
+
 // render-icon.py built_svg(): emblem e (null: your logo alone) on the Rootiest logo (logo null) or yours, in a
 // variant, padded or not, at a place, which adds to the emblem's own nudges.
 fun builtSvg(cfg: ComposeConfig, e: Emblem?, logo: Logo?, variant: String, padded: Boolean, place: Place = Place()): String {
     val canvas = if (padded) cfg.viewBoxPadded else cfg.viewBox
-    val c = (e?.colors ?: cfg.rootiestColors).getValue(variant)[if (e?.twoTone == true) 1 else 0]
+    val c = variantColors(e?.colors ?: cfg.rootiestColors, variant, e?.twoTone == true)
     val mine = logo?.let { (if (variant != "color" && it.mono != null) it.mono else it.body) to it.transform }
+    if (e == null && variant == "auto") {
+        return autoSvg(builtSvg(cfg, null, logo, "dark", padded, place), builtSvg(cfg, null, logo, "light", padded, place))
+    }
     if (e == null) {
         requireNotNull(mine) { "an icon needs an emblem or a logo of your own" }
         return customLogoSvg(canvas, mine.first, mine.second, c.logo)

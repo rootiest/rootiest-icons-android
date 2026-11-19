@@ -8,7 +8,6 @@ import dev.rootiest.icons.core.ExternalName
 import dev.rootiest.icons.core.IconEntry
 import dev.rootiest.icons.core.Index
 import dev.rootiest.icons.core.Logo
-import dev.rootiest.icons.core.MONO
 import dev.rootiest.icons.core.Parts
 import dev.rootiest.icons.core.Place
 import dev.rootiest.icons.core.UnusableSvg
@@ -16,6 +15,7 @@ import dev.rootiest.icons.core.builtSvg
 import dev.rootiest.icons.core.cleanSvg
 import dev.rootiest.icons.core.emblemRecolored
 import dev.rootiest.icons.core.emblemSvg
+import dev.rootiest.icons.core.emblemVariant
 import dev.rootiest.icons.core.fitLogo
 import dev.rootiest.icons.core.fmtG
 import dev.rootiest.icons.core.iconData
@@ -26,7 +26,6 @@ import dev.rootiest.icons.core.measureBox
 import dev.rootiest.icons.core.oklchOf
 import dev.rootiest.icons.core.ownSvg
 import dev.rootiest.icons.core.placementTag
-import dev.rootiest.icons.core.recolor
 import dev.rootiest.icons.core.slug
 import dev.rootiest.icons.core.thicken
 import dev.rootiest.icons.data.OwnFile
@@ -54,7 +53,8 @@ class Source(
     val row: String?, // the published icon whose manifest row builds it, for a published emblem
     val cliName: String, // the emblem as render-rootiest-icons names it
     val details: List<Pair<String, String>>,
-    val variants: List<String> = listOf("color", "dark", "light"),
+    // auto: dark and light in one SVG, following the viewer's mode (render-icon.py --variant auto)
+    val variants: List<String> = listOf("color", "auto", "dark", "light"),
     val brand: String? = null,
     val standsAlone: Boolean = false, // has an emblem-alone view as well as a whole icon
     val problem: String? = null, // why it cannot go on another logo or be placed elsewhere
@@ -210,13 +210,12 @@ class Studio(private val repo: Repo, val index: Index) {
             val keep = if (subject is EmblemSubject) subject.entry.keepFill else e!!.keep
             val twoTone = if (subject is EmblemSubject) subject.entry.twoTone else e!!.twoTone
             val base = if (subject is EmblemSubject) repo.svg("emblems/${subject.entry.name}.svg") else emblemSvg(cfg, e!!.body, e.bbox, e.keep, e.about)
-            text = if (c.variant == "color" || (subject is EmblemSubject && keep)) base else MONO.getValue(c.variant).let { recolor(base, it.first, it.second) }
+            text = if (subject is EmblemSubject && keep) base else emblemVariant(base, c.variant)
             parts = Parts(emblem = !keep, tone2 = twoTone && !keep)
             stemBase = if (subject is EmblemSubject) subject.entry.name else s.stem
             args += s.cliName
             if (subject is EmblemSubject) args += "--emblem"
-        } else if (subject is IconSubject && (c.variant == "auto" || e == null || (logo == null && !c.placedElsewhere))) {
-            // auto/ files exist only as published, so Auto always shows the published icon
+        } else if (subject is IconSubject && (e == null || (logo == null && !c.placedElsewhere))) {
             text = repo.svg("${c.variant}/${if (c.padded) "padded/" else ""}${subject.entry.name}.svg")
             parts = subject.entry.parts
             stemBase = subject.entry.name
@@ -270,14 +269,16 @@ fun commandLine(d: Drawn, c: Choices, morphName: String? = null): String {
         if (spec != null && c.variant == "color") args += listOf(flag, spec.label.removePrefix("#"))
     }
     if (c.layouts != listOf("auto")) args += listOf("--layout", c.layouts.joinToString(","))
-    args += listOf("--size", c.sizes.joinToString(","))
-    if (c.formats != listOf("png")) args += listOf("--format", c.formats.joinToString(","))
+    // auto makes an SVG only, which --variant auto implies: no sizes, formats or background
+    val svgOnly = c.variant == "auto"
+    if (!svgOnly) args += listOf("--size", c.sizes.joinToString(","))
+    if (!svgOnly && c.formats != listOf("png")) args += listOf("--format", c.formats.joinToString(","))
     if (c.animate != "none") {
         args += listOf("--animate", c.animate)
         if (c.animate == "morph") morphName?.let { args += listOf("--morph-to", it) }
         if (c.loop && (c.animate == "draw" || c.animate == "morph")) args += "--loop"
         c.duration?.let { args += listOf("--duration", fmtG(it)) }
     }
-    c.background?.let { args += listOf("--background", it) }
+    if (!svgOnly) c.background?.let { args += listOf("--background", it) }
     return (listOf("render-rootiest-icons") + args).joinToString(" ") { if (Regex("^[\\w@%+=:,./-]+$").matches(it)) it else "'" + it.replace("'", "'\"'\"'") + "'" }
 }

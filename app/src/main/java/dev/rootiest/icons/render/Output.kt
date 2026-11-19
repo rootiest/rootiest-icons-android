@@ -52,10 +52,11 @@ data class Animation(
 }
 
 // Every file of a render, as render-rootiest-icons writes them: per layout an SVG (animated, if asked), a PNG, a WebP
-// and a GIF per size (the WebP and GIF animated, with an animation), and one .ico holding every size.
+// and a GIF per size (the WebP and GIF animated, with an animation), and one .ico holding every size. previewLight: an
+// SVG's picture in light or dark mode (an auto one switches); null, the rasters' dark-background shades.
 suspend fun renderFiles(
     text: String, stem: String, small: List<Int>, layouts: List<String>, sizes: List<Int>, formats: List<String>, background: Int?,
-    animation: Animation = Animation(),
+    animation: Animation = Animation(), previewLight: Boolean? = null,
 ): List<Rendered> {
     val out = ArrayList<Rendered>()
     for (lay in layouts) {
@@ -65,8 +66,9 @@ suspend fun renderFiles(
         val moving = animateSvg(one, animation.animate, animation.duration, animation.loop, target)
         if ("svg" in formats) {
             out += Rendered(
-                NamedBytes("$name${animation.tag}.svg", moving.toByteArray()), Svg.rasterize(rasterSvg(text, lay, 192, small), 192),
-                if (animation.moves) animatedPreview(moving, animation, lay, 192, small, null) else null,
+                NamedBytes("$name${animation.tag}.svg", moving.toByteArray()),
+                Svg.rasterize(rasterSvg(previewLight?.let { schemeSvg(text, it) } ?: text, lay, 192, small), 192),
+                if (animation.moves) animatedPreview(moving, animation, lay, 192, small, previewLight) else null,
             )
         }
         if (animation.moves && ("webp" in formats || "gif" in formats)) {

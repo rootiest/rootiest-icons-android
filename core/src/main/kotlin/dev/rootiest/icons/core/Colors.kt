@@ -168,3 +168,123 @@ fun emblemRecolored(colors: Colors, text: String, o: ColorOptions): String {
 
 // The emblems' dark and light variants (render-icon.py MONO): white or black, tone 2 the other.
 val MONO = mapOf("dark" to ("#ffffff" to "#000000"), "light" to ("#000000" to "#ffffff"))
+
+// render-icon.py source_text() for an emblem alone: dark or light, white or black (MONO); auto, both in one file,
+// following the viewer's mode (autoSvg). The color variant, and any other, is the text as it is.
+fun emblemVariant(text: String, variant: String): String = when (variant) {
+    "auto" -> autoSvg(emblemVariant(text, "dark"), emblemVariant(text, "light"))
+    in MONO -> MONO.getValue(variant).let { recolor(text, it.first, it.second) }
+    else -> text
+}
+
+private const val LIGHT_MEDIA = "@media (prefers-color-scheme: light)"
+private const val COLOR_PROPS = "fill|stroke|stop-color|flood-color|lighting-color|color"
+private val TAG_COLOR = Regex("\\s($COLOR_PROPS)=\"(#[0-9a-fA-F]{3,8}\\b)\"")
+private val STYLE_COLOR = Regex("(?:^|;)\\s*($COLOR_PROPS)\\s*:\\s*(#[0-9a-fA-F]{3,8}\\b)")
+private val CSS_RULE = Regex("([^{}]+)\\{([^{}]*)\\}")
+private val ANY_TAG = Regex("<[^>]*>")
+private val DEFS_OPEN = Regex("<defs\\b[^>]*>")
+
+// render-icon.py tag_colors(): {property: hex color} a tag sets, by attribute or in its style attribute (which wins).
+private fun tagColors(tag: String): Map<String, String> {
+    val found = LinkedHashMap<String, String>()
+    for (m in TAG_COLOR.findAll(tag)) found[m.groupValues[1]] = m.groupValues[2]
+    for (m in STYLE_COLOR.findAll(getAttr(tag, "style") ?: "")) found[m.groupValues[1]] = m.groupValues[2]
+    return found
+}
+
+// render-icon.py with_class(): a start tag with cls added to its classes.
+private fun withClass(tag: String, cls: String): String {
+    if (getAttr(tag, "class") != null) {
+        val m = Regex("(\\sclass=)([\"'])(.*?)\\2").find(tag) ?: return tag
+        return tag.replaceRange(m.range, "${m.groupValues[1]}${m.groupValues[2]}${m.groupValues[3]} $cls${m.groupValues[2]}")
+    }
+    val m = Regex("^<[\\w:-]+").find(tag) ?: return tag
+    return tag.replaceRange(m.range, "${m.value} class=\"$cls\"")
+}
+
+// render-icon.py without_colors(): a start tag without these color properties, as attributes or in its style
+// attribute (an emptied one goes).
+private fun withoutColors(tag0: String, props: List<String>): String {
+    var tag = tag0
+    for (k in props) tag = Regex("\\s$k=\"#[0-9a-fA-F]{3,8}\\b\"").replace(tag, "")
+    val style = getAttr(tag, "style") ?: return tag
+    val drop = Regex("\\s*(${props.joinToString("|")})\\s*:\\s*#[0-9a-fA-F]{3,8}\\b\\s*")
+    val kept = style.split(";").filter { it.isNotBlank() && !drop.matches(it) }.joinToString(";")
+    val m = Regex("\\sstyle=([\"']).*?\\1").find(tag) ?: return tag
+    return tag.replaceRange(m.range, if (kept.isNotEmpty()) " style=\"$kept\"" else "")
+}
+
+// Python's re.split(r"(<[^>]*>)", text): the text between tags and the tags, alternately, text first and last.
+private fun splitTags(text: String): MutableList<String> {
+    val out = ArrayList<String>()
+    var at = 0
+    for (m in ANY_TAG.findAll(text)) {
+        out += text.substring(at, m.range.first)
+        out += m.value
+        at = m.range.last + 1
+    }
+    out += text.substring(at)
+    return out
+}
+
+// render-icon.py auto_svg(): one SVG that is `dark` in dark mode and `light` in light mode, two versions of one drawing
+// that differ only in colors (an emblem's dark and light variants): dark's text, with a prefers-color-scheme: light
+// block holding light's colors where they differ, as the published auto/ files have them. A stylesheet rule's color
+// goes there under the rule's selector; an element's own (an attribute, or its style attribute, as in an emblem drawn
+// in hex colors) moves to the stylesheet: the element gets a class, auto-N, ruled with its dark colors and, in the
+// light block, its light ones, so no rule has to win over a style attribute (AndroidSVG lets none).
+fun autoSvg(dark: String, light: String): String {
+    fun differ(): Nothing = throw UnusableSvg("the dark and light versions differ in more than their colors")
+    val ds = splitTags(dark)
+    val ls = splitTags(light)
+    if (ds.size != ls.size) differ()
+    val out = ArrayList(ds)
+    val lightRules = LinkedHashMap<Int, MutableList<String>>()
+    val classes = LinkedHashMap<Pair<String, String>, String>()
+    var scheme: Int? = null
+    for (i in ds.indices) {
+        val d = ds[i]
+        val l = ls[i]
+        val inStyle = i > 0 && ds[i - 1].startsWith("<style")
+        if (inStyle && "id=\"current-color-scheme\"" in ds[i - 1]) scheme = i
+        if (d == l) continue
+        if (HEX_RE.replace(d, "#") != HEX_RE.replace(l, "#") || (inStyle && "prefers-color-scheme" in d)) differ()
+        if (d.startsWith("<")) {
+            val dc = tagColors(d)
+            val lc = tagColors(l)
+            val diff = lc.filter { (k, v) -> dc[k] != v }.keys.toList()
+            if (diff.any { it !in dc }) differ()
+            val key = diff.joinToString(";") { "$it:${dc.getValue(it)}" } to diff.joinToString(";") { "$it:${lc.getValue(it)}" }
+            out[i] = withClass(withoutColors(d, diff), classes.getOrPut(key) { "auto-${classes.size + 1}" })
+        } else if (inStyle) {
+            lightRules[i] = CSS_RULE.findAll(d).zip(CSS_RULE.findAll(l))
+                .filter { (a, b) -> a.groupValues[2] != b.groupValues[2] }
+                .map { (_, b) -> "${b.groupValues[1].trim()}{${b.groupValues[2]}}" }.toMutableList()
+        } else {
+            differ()
+        }
+    }
+    val base = classes.entries.joinToString("") { (k, cls) -> ".$cls{${k.first}}" }
+    val tagged = classes.map { (k, cls) -> ".$cls{${k.second}}" }
+    if (tagged.isNotEmpty() && scheme == null) {
+        // no stylesheet for the colors yet: one, in the defs (made if there are none)
+        val style = "<style id=\"current-color-scheme\" type=\"text/css\">$base$LIGHT_MEDIA{${tagged.joinToString("")}}</style>"
+        val at = out.indexOfFirst { DEFS_OPEN.matches(it) && !it.endsWith("/>") }
+        if (at < 0) {
+            val svg = out.indexOfFirst { it.startsWith("<svg") }
+            if (svg < 0) differ()
+            out[svg] += "<defs>$style</defs>"
+        } else {
+            out[at] += style
+        }
+    } else if (tagged.isNotEmpty()) {
+        lightRules.getOrPut(scheme!!) { ArrayList() }.addAll(tagged)
+    }
+    for ((i, rules) in lightRules) {
+        if (rules.isEmpty()) continue
+        val core = out[i].trimEnd()
+        out[i] = "$core${if (i == scheme) base else ""}$LIGHT_MEDIA{${rules.joinToString("")}}${out[i].substring(core.length)}"
+    }
+    return out.joinToString("")
+}
