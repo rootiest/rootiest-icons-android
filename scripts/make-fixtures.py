@@ -102,6 +102,7 @@ def main():
          '<svg><defs>\n<style id="current-color-scheme">\n .ColorScheme-Accent{color:#000}.x { fill:#000; opacity:.5 }\n</style>'
          '<style>.y{stroke:#abc}.z{stroke:#cba}</style></defs><circle class="" fill="#000"/><circle fill="#000" /></svg>'),
         ('<svg><defs><style>.a{fill:#fff}</style></defs><path fill="#fff"/></svg>', '<svg><defs><style>.a{fill:#fff}</style></defs><path fill="#000"/></svg>'),
+        ('<svg><defs/><path fill="#fff"/></svg>', '<svg><defs/><path fill="#000"/></svg>'),
         ('<svg><path fill="#fff"/></svg>', '<svg><path fill="#fff"/></svg>'),
         ('<svg><path fill="#fff"/></svg>', '<svg><path fill="#000"/><path/></svg>'),
         ('<svg><path fill="#fff" d="M1 1"/></svg>', '<svg><path fill="#000" d="M2 2"/></svg>'),

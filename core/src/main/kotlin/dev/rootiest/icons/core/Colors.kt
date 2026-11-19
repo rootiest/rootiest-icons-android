@@ -183,7 +183,7 @@ private val TAG_COLOR = Regex("\\s($COLOR_PROPS)=\"(#[0-9a-fA-F]{3,8}\\b)\"")
 private val STYLE_COLOR = Regex("(?:^|;)\\s*($COLOR_PROPS)\\s*:\\s*(#[0-9a-fA-F]{3,8}\\b)")
 private val CSS_RULE = Regex("([^{}]+)\\{([^{}]*)\\}")
 private val ANY_TAG = Regex("<[^>]*>")
-private val DEFS_OPEN = Regex("<defs\\b[^>]*[^/]>")
+private val DEFS_OPEN = Regex("<defs\\b[^>]*>")
 
 // render-icon.py tag_colors(): {property: hex color} a tag sets, by attribute or in its style attribute (which wins).
 private fun tagColors(tag: String): Map<String, String> {
@@ -254,7 +254,7 @@ fun autoSvg(dark: String, light: String): String {
         // no stylesheet for the colors yet: one, in the defs (made if there are none)
         val style = "<style id=\"current-color-scheme\" type=\"text/css\">"
         val block = "$LIGHT_MEDIA{${tagged.joinToString("")}}"
-        val at = out.indexOfFirst { DEFS_OPEN.matches(it) }
+        val at = out.indexOfFirst { DEFS_OPEN.matches(it) && !it.endsWith("/>") }
         if (at < 0) {
             val svg = out.indexOfFirst { it.startsWith("<svg") }
             if (svg < 0) differ()
