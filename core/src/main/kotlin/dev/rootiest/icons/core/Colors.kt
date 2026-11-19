@@ -203,6 +203,18 @@ private fun withClass(tag: String, cls: String): String {
     return tag.replaceRange(m.range, "${m.value} class=\"$cls\"")
 }
 
+// render-icon.py without_colors(): a start tag without these color properties, as attributes or in its style
+// attribute (an emptied one goes).
+private fun withoutColors(tag0: String, props: List<String>): String {
+    var tag = tag0
+    for (k in props) tag = Regex("\\s$k=\"#[0-9a-fA-F]{3,8}\\b\"").replace(tag, "")
+    val style = getAttr(tag, "style") ?: return tag
+    val drop = Regex("\\s*(${props.joinToString("|")})\\s*:\\s*#[0-9a-fA-F]{3,8}\\b\\s*")
+    val kept = style.split(";").filter { it.isNotBlank() && !drop.matches(it) }.joinToString(";")
+    val m = Regex("\\sstyle=([\"']).*?\\1").find(tag) ?: return tag
+    return tag.replaceRange(m.range, if (kept.isNotEmpty()) " style=\"$kept\"" else "")
+}
+
 // Python's re.split(r"(<[^>]*>)", text): the text between tags and the tags, alternately, text first and last.
 private fun splitTags(text: String): MutableList<String> {
     val out = ArrayList<String>()
@@ -220,7 +232,8 @@ private fun splitTags(text: String): MutableList<String> {
 // that differ only in colors (an emblem's dark and light variants): dark's text, with a prefers-color-scheme: light
 // block holding light's colors where they differ, as the published auto/ files have them. A stylesheet rule's color
 // goes there under the rule's selector; an element's own (an attribute, or its style attribute, as in an emblem drawn
-// in hex colors) gives the element a class, auto-light-N, whose rule is !important to win over a style attribute.
+// in hex colors) moves to the stylesheet: the element gets a class, auto-N, ruled with its dark colors and, in the
+// light block, its light ones, so no rule has to win over a style attribute (AndroidSVG lets none).
 fun autoSvg(dark: String, light: String): String {
     fun differ(): Nothing = throw UnusableSvg("the dark and light versions differ in more than their colors")
     val ds = splitTags(dark)
@@ -228,7 +241,7 @@ fun autoSvg(dark: String, light: String): String {
     if (ds.size != ls.size) differ()
     val out = ArrayList(ds)
     val lightRules = LinkedHashMap<Int, MutableList<String>>()
-    val classes = LinkedHashMap<String, String>()
+    val classes = LinkedHashMap<Pair<String, String>, String>()
     var scheme: Int? = null
     for (i in ds.indices) {
         val d = ds[i]
@@ -239,8 +252,11 @@ fun autoSvg(dark: String, light: String): String {
         if (HEX_RE.replace(d, "#") != HEX_RE.replace(l, "#") || (inStyle && "prefers-color-scheme" in d)) differ()
         if (d.startsWith("<")) {
             val dc = tagColors(d)
-            val body = tagColors(l).filter { (k, v) -> dc[k] != v }.entries.joinToString(";") { "${it.key}:${it.value} !important" }
-            out[i] = withClass(d, classes.getOrPut(body) { "auto-light-${classes.size + 1}" })
+            val lc = tagColors(l)
+            val diff = lc.filter { (k, v) -> dc[k] != v }.keys.toList()
+            if (diff.any { it !in dc }) differ()
+            val key = diff.joinToString(";") { "$it:${dc.getValue(it)}" } to diff.joinToString(";") { "$it:${lc.getValue(it)}" }
+            out[i] = withClass(withoutColors(d, diff), classes.getOrPut(key) { "auto-${classes.size + 1}" })
         } else if (inStyle) {
             lightRules[i] = CSS_RULE.findAll(d).zip(CSS_RULE.findAll(l))
                 .filter { (a, b) -> a.groupValues[2] != b.groupValues[2] }
@@ -249,18 +265,18 @@ fun autoSvg(dark: String, light: String): String {
             differ()
         }
     }
-    val tagged = classes.map { (body, cls) -> ".$cls{$body}" }
+    val base = classes.entries.joinToString("") { (k, cls) -> ".$cls{${k.first}}" }
+    val tagged = classes.map { (k, cls) -> ".$cls{${k.second}}" }
     if (tagged.isNotEmpty() && scheme == null) {
         // no stylesheet for the colors yet: one, in the defs (made if there are none)
-        val style = "<style id=\"current-color-scheme\" type=\"text/css\">"
-        val block = "$LIGHT_MEDIA{${tagged.joinToString("")}}"
+        val style = "<style id=\"current-color-scheme\" type=\"text/css\">$base$LIGHT_MEDIA{${tagged.joinToString("")}}</style>"
         val at = out.indexOfFirst { DEFS_OPEN.matches(it) && !it.endsWith("/>") }
         if (at < 0) {
             val svg = out.indexOfFirst { it.startsWith("<svg") }
             if (svg < 0) differ()
-            out[svg] += "<defs>$style$block</style></defs>"
+            out[svg] += "<defs>$style</defs>"
         } else {
-            out[at] += "$style$block</style>"
+            out[at] += style
         }
     } else if (tagged.isNotEmpty()) {
         lightRules.getOrPut(scheme!!) { ArrayList() }.addAll(tagged)
@@ -268,7 +284,7 @@ fun autoSvg(dark: String, light: String): String {
     for ((i, rules) in lightRules) {
         if (rules.isEmpty()) continue
         val core = out[i].trimEnd()
-        out[i] = "$core$LIGHT_MEDIA{${rules.joinToString("")}}${out[i].substring(core.length)}"
+        out[i] = "$core${if (i == scheme) base else ""}$LIGHT_MEDIA{${rules.joinToString("")}}${out[i].substring(core.length)}"
     }
     return out.joinToString("")
 }

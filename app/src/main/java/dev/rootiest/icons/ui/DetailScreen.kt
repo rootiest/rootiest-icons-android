@@ -206,7 +206,8 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
             }
         }
         if (d != null) {
-            if (autoFile) Note(SVG_ONLY_COLOR, Modifier)
+            // an -auto icon only: in the auto variant the Render panel says it makes the SVG alone
+            if (autoFile && !auto) Note(SVG_ONLY_COLOR, Modifier)
             RenderPanel(vm, s, d, c, moving) { c = it }
         }
         Box(Modifier.height(24.dp))
