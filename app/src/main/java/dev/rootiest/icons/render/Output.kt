@@ -14,6 +14,7 @@ import dev.rootiest.icons.core.animationTag
 import dev.rootiest.icons.core.FPS
 import dev.rootiest.icons.core.frameSvg
 import dev.rootiest.icons.core.frameTimes
+import dev.rootiest.icons.core.playFrames
 import dev.rootiest.icons.core.layoutsOf
 import dev.rootiest.icons.core.icoBytes
 import dev.rootiest.icons.core.rasterSvg
@@ -147,7 +148,17 @@ private fun oneLayout(text: String, layout: String, size: Int, small: List<Int>)
 // drawn and compressed on several cores at once, then a run of the same frame is kept as one.
 suspend fun animatedPreview(moving: String, animation: Animation, layout: String, size: Int, small: List<Int>, light: Boolean?, px: Int = size): ByteArray {
     val (times, once) = frameTimes(animation.animate, animation.loop, animation.duration)
-    val single = oneLayout(moving, layout, size, small)
+    return previewFrames(oneLayout(moving, layout, size, small), times, once, layout, size, light, px)
+}
+
+// A published animated file (an animated status badge) playing, as animatedPreview plays an animation: its frames from
+// its own play time (a loop loops, a change plays once and holds its end), the layout size shows.
+suspend fun publishedPreview(text: String, size: Int, light: Boolean?, px: Int = size): ByteArray {
+    val (times, once) = playFrames(text)
+    return previewFrames(oneLayout(text, "auto", size, layoutsOf(text)), times, once, "auto", size, light, px)
+}
+
+private suspend fun previewFrames(single: String, times: List<Double>, once: Boolean, layout: String, size: Int, light: Boolean?, px: Int): ByteArray {
     val sink = WebpSink(1000 / FPS, once, lossy = true)
     val cores = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 4)
     val frames = withContext(Dispatchers.Default.limitedParallelism(cores)) {

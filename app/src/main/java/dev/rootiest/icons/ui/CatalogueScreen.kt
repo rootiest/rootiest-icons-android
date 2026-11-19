@@ -39,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,7 +72,7 @@ private fun matches(query: String, category: String, vararg fields: String?, cat
     return q.isEmpty() || fields.any { it != null && q in it.lowercase() }
 }
 
-// The catalogue: every icon, status icon and emblem, filtered by the search box and the category, and what the
+// The catalogue: every icon, status icon, animated status badge and emblem, filtered by the search box and the category, and what the
 // other sets have for the search. The search, variant and category stay at the top while the icons scroll.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,6 +115,7 @@ private fun Grid(vm: IconsViewModel, index: Index, padding: PaddingValues) {
     val emblems = index.emblems.filter { matches(vm.query, vm.category, it.name, it.title, it.description, cats = emptyList()) }
     val shownIcons = shown(icons)
     val shownStatus = shown(status)
+    val plays = remember { AnimatedPlays() }
     LazyVerticalGrid(
         columns = GridCells.Adaptive(104.dp),
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp),
@@ -126,6 +128,8 @@ private fun Grid(vm: IconsViewModel, index: Index, padding: PaddingValues) {
         items(shownIcons, key = { "icon-${it.name}" }) { IconTile(vm, it) }
         section("Status icons and badges", shownStatus.size, status.size, null)
         items(shownStatus, key = { "icon-${it.name}" }) { IconTile(vm, it) }
+        // as the homepage: only with an empty search and every category
+        if (vm.query.isBlank() && vm.category == "all") animatedBadges(vm, index.animated, plays)
         section("Emblems", emblems.size, index.emblems.size, "The marks on their own. Dark and light show them in white and in black.")
         items(emblems, key = { "emblem-${it.name}" }) { EmblemTile(vm, it) }
         if (vm.query.isNotBlank()) {
