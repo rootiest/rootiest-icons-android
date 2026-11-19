@@ -38,7 +38,7 @@ def main():
     colors, cfg = site.colors(ri), site.compose_data(ri)
     rng = random.Random(7)
     read = lambda *p: open(os.path.join(ICONS, *p)).read()
-    spec_js = lambda s: None if s is None else {"kind": s[0], "value": s[1], "label": s[-1]}
+    spec_js = lambda s: None if s is None else {"kind": s[0], "value": s[1], "label": s[-1], **({"light": s[2]} if s[0] == "pair" else {})}
     # Long texts are kept once, by a short key, and long expected outputs as their SHA-256: the file stays small.
     texts = {}
     sha = lambda t: hashlib.sha256(t.encode()).hexdigest()
@@ -56,12 +56,12 @@ def main():
     # Recoloring: a few icons and emblems in every category, state and some hex colors, and the per-part options.
     recolor = []
 
-    def add(text, is_emblem, **o):
-        a = SimpleNamespace(icon="x", emblem=is_emblem, color=o.get("color"), logo_color=o.get("logo"),
+    def add(text, is_emblem, variant="color", **o):
+        a = SimpleNamespace(icon="x", emblem=is_emblem, variant=variant, color=o.get("color"), logo_color=o.get("logo"),
                             emblem_color=o.get("emblem"), tone2_color=o.get("tone2"))
         want = ri.emblem_recolored(text, a) if is_emblem else ri.icon_recolored(text, a)
-        recolor.append({"text": key(text), "emblem": is_emblem, "o": {k: spec_js(o.get(k)) for k in ("color", "logo", "emblem", "tone2")},
-                        "want": sha(want)})
+        recolor.append({"text": key(text), "emblem": is_emblem, "variant": variant,
+                        "o": {k: spec_js(o.get(k)) for k in ("color", "logo", "emblem", "tone2")}, "want": sha(want)})
 
     for name in ("rootiest-gitea", "rootiest-vault", "logo", "icon-ok-circle", "rootiest-photos-header"):
         text = read("icons", "color", f"{name}.svg")
@@ -77,6 +77,41 @@ def main():
         for s in specs:
             add(text, True, color=s)
         add(text, True, tone2=("hex", "#123456"))
+    # The auto variant in custom colors (render-icon.py icon_parts, emblem_recolored): auto/ icons (gitea's emblem in hex
+    # colors, id's and status's by class) and emblems alone, in one color (a category, a state, hex colors, neutral,
+    # which already switches) or a pair, dark/light; per part, and tone 2 as a pair or one color.
+    pairs = [ri.color_spec(t) for t in ("cdd6f4/4c4f69", "#ff8800/#123456", "fff/000", "7bd77f/107823")]
+    auto_specs = pairs + [("cat", "dev", "dev"), ("cat", "neutral", "neutral"), ("cat", ri.STATE_NAMES["ok"], "ok"),
+                          ("hex", "#ff8800"), ("hex", "#000000"), ("hex", "#ffffff"), ("hex", "#18bcf2", "brand")]
+    for name in ("rootiest-gitea", "rootiest-id", "rootiest-status", "logo"):
+        text = read("icons", "auto", f"{name}.svg")
+        for i, s in enumerate(auto_specs):
+            add(text, False, "auto", color=s)
+            if name != "logo":
+                add(text, False, "auto", logo=s, emblem=auto_specs[(i * 7 + 3) % len(auto_specs)])
+                add(text, False, "auto", emblem=s)
+        if name == "rootiest-gitea":
+            for i, s in enumerate(auto_specs):
+                add(text, False, "auto", emblem=s, tone2=pairs[i % len(pairs)])
+            for x in hexes:
+                add(text, False, "auto", color=("cat", "dev", "dev"), tone2=("hex", x))
+    for name in ("gitea", "id", "home", "status"):
+        text = read("icons", "emblems", f"{name}.svg")
+        for i, s in enumerate(auto_specs):
+            add(text, True, "auto", color=s)
+            add(text, True, "auto", emblem=s, tone2=pairs[i % len(pairs)] if i % 2 else ("hex", hexes[i % len(hexes)]))
+        add(text, True, "auto", tone2=pairs[1])
+        add(text, True, "auto")
+    # Color options as typed, render-icon.py color_spec() (null: not a color), plain and hex-only (--tone2-color); brand
+    # is the app's own menu item, not typed.
+    def spec_of(t, hex_only):
+        try:
+            return spec_js(ri.color_spec(t, hex_only))
+        except Exception:
+            return None
+    spec_texts = ["dev", " Neutral ", "ok", "#FF8800", "f80", "#f80/#08f", "cdd6f4/4c4f69", "CDD6F4/#4C4F69", "fff/000000",
+                  "ff8800/", "/ff8800", "ff8800//000000", "dev/ok", "#ff88/#000", "#ff8800/#000/#fff", "nope", ""]
+    color_specs = [{"text": t, "hexOnly": h, "want": spec_of(t, h)} for t in spec_texts for h in (False, True)]
     mono_cases = [{"text": key(read("icons", "emblems", "gitea.svg")), "main": m, "tone2": t,
              "want": sha(ri.recolor(read("icons", "emblems", "gitea.svg"), m, t))} for m, t in ri.MONO.values()]
 
@@ -239,9 +274,10 @@ def main():
     # File names, against render-icon.py's planned().
     plans = []
     for i, (stem, is_emblem) in enumerate((("rootiest-gitea", False), ("gitea", True), ("acme-tabler-star-badge", False))):
-        for variant, padded in (("color", False), ("dark", True), ("light", False)):
+        for variant, padded in (("color", False), ("dark", True), ("light", False), ("auto", i % 2 == 1)):
             for o in ({}, {"color": specs[i]}, {"logo": ("cat", "dev", "dev"), "emblem": ("hex", "#ff8800"), "tone2": ("hex", "#ffffff")},
-                      {"color": ("hex", "#18bcf2", "brand")}):
+                      {"color": ("hex", "#18bcf2", "brand")},
+                      {"color": ri.color_spec("cdd6f4/4c4f69"), "logo": ri.color_spec("#FFF/#000"), "tone2": ri.color_spec("abc/123456")}):
                 layouts = [["auto"], ["auto", "full", 16], [48, 24]][(i + len(o)) % 3]
                 sizes, formats = [[256], [16, 32, 48], [1024, 64]][i % 3], [["png"], ["png", "webp", "ico", "svg"], ["svg", "ico"]][len(o) % 3]
                 animate, loop, duration = [("none", False, None), ("draw", False, None), ("draw", True, None), ("draw", True, 6.5),
@@ -330,7 +366,7 @@ def main():
 
     out = {"colors": colors, "cfg": cfg, "recolor": recolor, "mono": mono_cases, "autos": autos, "shades": shades, "built": built, "alone": alone,
            "own": own, "texts": texts, "icondata": icondata, "plans": plans, "layouts": layouts, "numbers": numbers,
-           "anims": anims, "animTags": anim_tags}
+           "anims": anims, "animTags": anim_tags, "colorSpecs": color_specs}
     path = os.path.join(HERE, "core", "src", "test", "resources", "fixtures.json")
     with open(path, "w") as f:
         json.dump(out, f, separators=(",", ":"), sort_keys=True)

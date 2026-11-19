@@ -179,21 +179,25 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
     SectionHeader("Render")
     SettingsCard {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Colors: only the parts this icon or emblem has, in the color variant.
+            // Colors: only the parts this icon or emblem has, in the color and auto variants (auto also takes a pair,
+            // one color for dark backgrounds and one for light ones).
             val p = d.parts
-            if (c.variant != "color") Text("Colors apply to the color variant.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+            val auto = c.variant == "auto"
+            if (c.variant != "color" && !auto) Text("Colors apply to the color and auto variants.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
             else if (!(p.logo || p.emblem || p.tone2)) Text(if (d.isEmblem) "This emblem keeps its own colors." else "Nothing here takes another color.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
             else {
                 val default = if (d.brandDefault) "Default (brand)" else if (d.built || s.brand != null) "Default" else "As published"
                 val brand = s.brand?.let { ColorSpec("hex", it, "brand") }
                 if (d.isEmblem) {
-                    if (p.emblem) ColorRow("Emblem", c.colors.color, colors, default, brand) { change(c.copy(colors = c.colors.copy(color = it))) }
+                    if (p.emblem) ColorRow("Emblem", c.colors.color, colors, default, brand, auto) { change(c.copy(colors = c.colors.copy(color = it))) }
                 } else {
-                    if (p.logo) ColorRow(if (p.emblem) "Whole icon" else "Logo", c.colors.color, colors, default, brand) { change(c.copy(colors = c.colors.copy(color = it))) }
-                    if (p.logo && p.emblem) ColorRow("Logo", c.colors.logo, colors, "—", brand) { change(c.copy(colors = c.colors.copy(logo = it))) }
-                    if (p.emblem) ColorRow("Emblem", c.colors.emblem, colors, if (p.logo) "—" else default, brand) { change(c.copy(colors = c.colors.copy(emblem = it))) }
+                    if (p.logo) ColorRow(if (p.emblem) "Whole icon" else "Logo", c.colors.color, colors, default, brand, auto) { change(c.copy(colors = c.colors.copy(color = it))) }
+                    if (p.logo && p.emblem) ColorRow("Logo", c.colors.logo, colors, "—", brand, auto) { change(c.copy(colors = c.colors.copy(logo = it))) }
+                    if (p.emblem) ColorRow("Emblem", c.colors.emblem, colors, if (p.logo) "—" else default, brand, auto) { change(c.copy(colors = c.colors.copy(emblem = it))) }
                 }
-                if (p.tone2) ColorRow("Second tone", c.colors.tone2, colors, "—", null, hexOnly = true) { change(c.copy(colors = c.colors.copy(tone2 = it))) }
+                if (p.tone2) ColorRow("Second tone", c.colors.tone2, colors, "—", null, auto, hexOnly = true) { change(c.copy(colors = c.colors.copy(tone2 = it))) }
+                if (auto) Text("In auto, one color is drawn a little lighter in dark mode and deeper in light mode; a pair is used exactly.",
+                    style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
             }
             if (small.isNotEmpty()) {
                 Field("Layout") {
@@ -406,55 +410,89 @@ private fun Chips(values: List<String>, selected: List<String>, names: Map<Strin
     }
 }
 
-// One part's color: the default, a category, a status state, a brand's own, or any hex color.
+// One part's color: the default, a category, a status state, a brand's own, or any hex color; in the auto variant
+// (pairs) also a dark/light pair, one color for dark backgrounds and one for light ones, as `cdd6f4/4c4f69`.
 @Composable
-private fun ColorRow(label: String, value: ColorSpec?, colors: Colors, default: String, brand: ColorSpec?, hexOnly: Boolean = false, change: (ColorSpec?) -> Unit) {
+private fun ColorRow(label: String, value: ColorSpec?, colors: Colors, default: String, brand: ColorSpec?, pairs: Boolean, hexOnly: Boolean = false, change: (ColorSpec?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    var custom by remember { mutableStateOf(value != null && !value.isCategory && value.label != "brand") }
+    // what the row edits: a hex color of its own, or a pair; remembered per variant, so leaving auto (which drops a
+    // pair) starts the row again from its value
+    var custom by remember(pairs) { mutableStateOf(value != null && value.kind == "hex" && value.label != "brand") }
+    var pair by remember(pairs) { mutableStateOf(pairs && value?.isPair == true) }
     var hex by remember { mutableStateOf(if (custom) value!!.value else "#ff8800") }
-    val swatch = value?.let { parseColor(if (it.isCategory) colors.categories.getValue(it.value).getValue("Accent")[0] else it.value) }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
-        Box {
-            OutlinedButton(onClick = { open = true }) {
-                swatch?.let { Box(Modifier.size(12.dp).clip(CircleShape).background(it)) }
-                Text((if (swatch != null) "  " else "") + when {
-                    custom -> "Custom"
-                    value == null -> default
-                    else -> value.label
-                })
-            }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                @Composable
-                fun item(text: String, spec: ColorSpec?, isCustom: Boolean = false) = DropdownMenuItem(
-                    text = { Text(text) },
-                    leadingIcon = spec?.let { sp ->
-                        { Box(Modifier.size(12.dp).clip(CircleShape).background(parseColor(if (sp.isCategory) colors.categories.getValue(sp.value).getValue("Accent")[0] else sp.value) ?: Color.Transparent)) }
-                    },
-                    onClick = {
-                        open = false
-                        custom = isCustom
-                        change(if (isCustom) colorSpec(colors, hex, true) else spec)
-                    },
-                )
-                item(default, null)
-                if (brand != null && !hexOnly) item("brand (${brand.value})", brand)
-                if (!hexOnly) {
-                    colors.categories.keys.forEach { item(it, ColorSpec("cat", it, it)) }
-                    colors.states.forEach { (state, cat) -> item(state, ColorSpec("cat", cat, state)) }
+    var dark by remember { mutableStateOf(if (pair) value!!.value else "#cdd6f4") }
+    var light by remember { mutableStateOf(if (pair) value!!.light!! else "#4c4f69") }
+    fun pairSpec() = colorSpec(colors, "$dark/$light")
+    fun dot(spec: ColorSpec) = parseColor(if (spec.isCategory) colors.categories.getValue(spec.value).getValue("Accent")[0] else spec.value)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
+            Box {
+                OutlinedButton(onClick = { open = true }) {
+                    value?.let(::dot)?.let { Box(Modifier.size(12.dp).clip(CircleShape).background(it)) }
+                    if (value?.isPair == true) parseColor(value.light!!)?.let { Box(Modifier.padding(start = 2.dp).size(12.dp).clip(CircleShape).background(it)) }
+                    Text((if (value != null) "  " else "") + when {
+                        pair -> "Dark/light pair"
+                        custom -> "Custom"
+                        value == null -> default
+                        else -> value.label
+                    })
                 }
-                item("Custom…", null, isCustom = true)
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    @Composable
+                    fun item(text: String, spec: ColorSpec?, mode: String = "") = DropdownMenuItem(
+                        text = { Text(text) },
+                        leadingIcon = spec?.let { sp -> { Box(Modifier.size(12.dp).clip(CircleShape).background(dot(sp) ?: Color.Transparent)) } },
+                        onClick = {
+                            open = false
+                            custom = mode == "custom"
+                            pair = mode == "pair"
+                            change(when (mode) {
+                                "custom" -> colorSpec(colors, hex, true)
+                                "pair" -> pairSpec()
+                                else -> spec
+                            })
+                        },
+                    )
+                    item(default, null)
+                    if (brand != null && !hexOnly) item("brand (${brand.value})", brand)
+                    if (!hexOnly) {
+                        colors.categories.keys.forEach { item(it, ColorSpec("cat", it, it)) }
+                        colors.states.forEach { (state, cat) -> item(state, ColorSpec("cat", cat, state)) }
+                    }
+                    item("Custom…", null, "custom")
+                    if (pairs) item("Dark/light pair…", null, "pair")
+                }
+            }
+            if (custom) {
+                OutlinedTextField(
+                    hex,
+                    { text ->
+                        hex = text.trim()
+                        colorSpec(colors, hex, true)?.let(change)
+                    },
+                    singleLine = true, isError = colorSpec(colors, hex, true) == null, modifier = Modifier.width(120.dp),
+                )
             }
         }
-        if (custom) {
-            OutlinedTextField(
-                hex,
-                { text ->
-                    hex = text.trim()
-                    colorSpec(colors, hex, true)?.let(change)
-                },
-                singleLine = true, isError = colorSpec(colors, hex, true) == null, modifier = Modifier.width(120.dp),
-            )
+        if (pair) {
+            // one color for dark backgrounds, one for light ones, each a hex color (the # optional)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((side, text) in listOf("On dark" to dark, "On light" to light)) {
+                    OutlinedTextField(
+                        text,
+                        { t ->
+                            if (side == "On dark") dark = t.trim() else light = t.trim()
+                            pairSpec()?.let(change)
+                        },
+                        label = { Text(side) },
+                        leadingIcon = colorSpec(colors, text, true)?.let { parseColor(it.value) }?.let { col ->
+                            { Box(Modifier.size(14.dp).clip(CircleShape).background(col)) }
+                        },
+                        singleLine = true, isError = colorSpec(colors, text, true) == null, modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
     }
 }

@@ -170,7 +170,10 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
             Segmented(listOf(true to "On the logo", false to "Emblem alone"), whole, Modifier.fillMaxWidth()) { c = c.copy(whole = it, padded = c.padded && it) }
         }
         if (s.variants.size > 1) {
-            Segmented(s.variants.map { it to it.replaceFirstChar(Char::uppercase) }, c.variant, Modifier.fillMaxWidth()) { c = c.copy(variant = it) }
+            Segmented(s.variants.map { it to it.replaceFirstChar(Char::uppercase) }, c.variant, Modifier.fillMaxWidth()) {
+                // a pair of colors, dark/light, is for auto alone (render-icon.py check_colors)
+                c = c.copy(variant = it, colors = if (it == "auto") c.colors else c.colors.withoutPairs())
+            }
         }
         if (whole && s.emblem != null) {
             if (logo != null) {
