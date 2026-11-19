@@ -27,7 +27,8 @@ The app is [icons.rootiest.fyi](https://icons.rootiest.fyi) for a phone, with th
 
 | Screen | What it holds |
 |---|---|
-| **Catalogue** | Every icon, status icon and badge, and emblem, as tiles. The search box filters them and, from three letters, looks through the other sets as well (`cloud`, or `tabler:cloud` for one set). A tap on a tile's name copies the name (`rootiest-gitea`, `tabler:cloud`), for the command line or the morph's "by name". Color, Auto, Dark and Light switch the variant; the chips filter by category or status state. The search box, the variant, the light/dark toggle and the chips stay at the top while the tiles scroll. A card at the top (with an empty search) and a button in the top bar open **Drawn with Math**. |
+| **Catalogue** | Every icon, status icon and badge, and emblem, as tiles, with the animated status badges between the status icons and the emblems. The search box filters them and, from three letters, looks through the other sets as well (`cloud`, or `tabler:cloud` for one set). A tap on a tile's name copies the name (`rootiest-gitea`, `tabler:cloud`), for the command line or the morph's "by name". Color, Auto, Dark and Light switch the variant; the chips filter by category or status state. The search box, the variant, the light/dark toggle and the chips stay at the top while the tiles scroll. A card at the top (with an empty search) and a button in the top bar open **Drawn with Math**. |
+| **Animated status badges** | As on the homepage, and hidden as there while searching or filtering: badges whose mark morphs from one state to another (`color/animated/` in `index.json`'s `animated` list). Circle, Square, Triangle and Heartbeat choose the shape; the shape's cycle, every state in turn, plays above a matrix of its changes, from (rows) to (columns), the heartbeat's loops (each state beating) down its diagonal. Each plays as an animated WebP of its frames, worked out from the file's own timing (its CSS animations' and SMIL animates' durations and iteration counts: a loop loops, a change plays once and holds its end). To keep the matrix quick, a change shows its end, the new state, until it is tapped; it is then drawn once and kept for the session. A tap plays a badge again and chooses it, and the row below saves its SVG to `Downloads/Rootiest Icons` or shares it. They follow the light or dark preview toggle. |
 | **Light and dark previews** | Auto shows each icon's `auto/` file: the dark and light versions in one SVG that switches with the viewer's mode (an icon without one shows its color version, faded; an emblem shows in white or black, the way its auto version shows in that mode). A file that switches by itself (`auto/`, or an `-auto` icon such as `rootiest-id-auto`) has a small auto-brightness badge on its tile. The sun or moon button next to the variant previews every SVG that switches (the auto files, and the color icons, whose emblem takes a deeper shade in light mode) in light or dark mode, with a light or dark background to match; it starts as the app's appearance and keeps its choice for the session. |
 | **Detail** | One icon or emblem: its preview, its details, the variant, the padded twin, and for an emblem whether it is on the logo or alone. With a logo of your own loaded, Rootiest logo or Your logo. Placement (upper right or badge, size, right, down), the five layouts side by side, and the Render panel. The details say how it takes light or dark mode (it follows it, its emblem takes a deeper shade, or the same in both), and a preview that switches has the light/dark toggle in its corner. Auto, the dark and light versions in one SVG that follows the viewer's mode, is a variant of every icon with an auto file, every emblem, every icon from another set and your own files (not of the color-only icons): a published icon in it is its `auto/` file, and one on your logo or placed elsewhere is built here, as `render-rootiest-icons --variant auto` builds it. Since a raster cannot switch, the Render panel makes the SVG only in Auto (no sizes, formats or background). An `-auto` icon says it is SVG only and points to its day and night versions for rasters. |
 | **Render panel** | The colors (a category, a status state, a brand's own, or any hex color, for the whole icon or per part), the layouts, any sizes up to 4096 px, PNG, WebP, ICO, SVG and GIF, an animation for the SVG, WebP and GIF (Draw: it draws itself, once or looping; Heartbeat: a heart monitor's sweep across the emblem; Pulse, Spin, Shake: the emblem breathes, turns or wobbles; Pop: it bounces in, once; Shine: a glint crosses it; Morph: it turns into another icon of the same kind (published, from another set by name, or your emblem file, built on the same logo and placement), once or there and back; and a duration), and a background to flatten onto. The preview above plays the chosen animation (in light or dark mode, as the preview is); a tap plays it again. Render draws every file, and the tiles of animated files play; Save writes them to `Downloads/Rootiest Icons`, Share hands one file, or a zip of several, to another app. The command that writes the same files with `render-rootiest-icons` is shown and can be copied. |
@@ -89,7 +90,7 @@ Two Gradle modules:
 | `Files.kt` | `stem_of`, `planned`, `layouts_of`, `resolve`, `single_layout_svg`, the ICO and zip writers, and `schemeSvg`/`switches` (an SVG that switches with light or dark mode, fixed to one) |
 | `Animate.kt` | `animate_svg` (every `--animate`), `animation_tag` |
 | `Morph.kt` | `morph_svg` (`--animate morph`): the emblems' shapes as polygons (each tone apart), paired, aligned and morphed, the rest cross-faded |
-| `Frames.kt` | `frame_svg` and `frame_times`: an animated SVG's values at one moment, as a still SVG for a frame |
+| `Frames.kt` | `frame_svg` and `frame_times`: an animated SVG's values at one moment, as a still SVG for a frame; and `playTime`/`playFrames`, how long a published animated file plays and whether it loops, read from its own text |
 
 `:app` (`app/src/main/java/dev/rootiest/icons/`):
 
@@ -98,11 +99,11 @@ Two Gradle modules:
 | `data/Repo.kt` | The network: the catalogue, published SVGs, the Iconify API |
 | `data/Settings.kt` | The settings, and your own logo and emblem |
 | `render/Svg.kt` | Draws SVG text to a bitmap, and measures what a body draws |
-| `render/Output.kt` | The files of a render, and an animation's preview; saving and sharing them |
+| `render/Output.kt` | The files of a render, an animation's preview and a published animated file's; saving and sharing them |
 | `render/Animated.kt` | Animated WebP (frames in a VP8X/ANIM container) and GIF (a palette per frame, LZW), from frames taken one at a time |
 | `Studio.kt` | Turns a subject (an icon, an emblem, a name from another set, your file) and the screen's choices into the SVG, the file names and the command |
 | `IconsViewModel.kt` | The app's state: the catalogue, the search, your files, the stack of screens |
-| `ui/` | The screens (`CatalogueScreen`, `DetailScreen`, `RenderPanel`, `OwnScreen`, `SettingsScreen`, `LicensesScreen`, `ArticleScreen`), their shared pieces (`Components`, and `Playing`: animations played), and the theme |
+| `ui/` | The screens (`CatalogueScreen` with `AnimatedBadges`, `DetailScreen`, `RenderPanel`, `OwnScreen`, `SettingsScreen`, `LicensesScreen`, `ArticleScreen`), their shared pieces (`Components`, and `Playing`: animations played), and the theme |
 
 A published icon is shown from its published file. It is built here instead, from its emblem and manifest row, as
 soon as it goes on your logo or is placed elsewhere, exactly when `render-rootiest-icons` builds it.
@@ -118,6 +119,10 @@ data, file names, layouts, number formatting, every animation and morph, and the
 When rootiest-icons changes how it builds an icon, port the change to `:core`, then run
 `scripts/make-fixtures.py` (it reads a rootiest-icons checkout: `$ROOTIEST_ICONS_DIR`, or
 `~/projects/rootiest-icons`) and commit the new fixtures with it.
+
+`AnimatedTest.kt` reads copies of published animated status badges (`core/src/test/resources/animated/`, from
+rootiest-icons' `icons/color/animated/`: a badge's change and cycle, and the heartbeat's loop, change and cycle) for
+how long each plays, whether it loops, and its frames. Copy them again when those files change how they animate.
 
 ## Drawing
 
@@ -158,7 +163,7 @@ made by `scripts/make-launcher.py`.
 
 `./tests/run-tests.sh` runs `:core`'s JVM tests and builds the debug app; it needs no device.
 
-The screens are checked by hand in an emulator before a release: the catalogue in each variant, an icon's detail and
+The screens are checked by hand in an emulator before a release: the catalogue in each variant, the animated status badges (each shape, a change tapped, light and dark), an icon's detail and
 a render saved to Downloads, the badge placement, a logo and an emblem of your own picked from a file, a search of
 the other sets, both themes, and the licenses screen.
 
