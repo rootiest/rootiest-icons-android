@@ -10,7 +10,7 @@ import java.util.zip.CRC32
 // render-icon.py color_tag(): the colors part of a file name (dev, logo-dev-emblem-ff8800, ...).
 fun colorTag(o: ColorOptions): String =
     listOf("" to o.color, "logo-" to o.logo, "emblem-" to o.emblem, "tone2-" to o.tone2)
-        .mapNotNull { (label, spec) -> spec?.let { label + it.label.removePrefix("#") } }.joinToString("-")
+        .mapNotNull { (label, spec) -> spec?.let { label + it.label.removePrefix("#").replaceFirst("/", "-") } }.joinToString("-")
 
 // render-icon.py stem_of(): <icon>[-emblem]-<variant>[-<colors>][-padded].
 fun stemOf(base: String, emblem: Boolean, variant: String, padded: Boolean, o: ColorOptions): String {

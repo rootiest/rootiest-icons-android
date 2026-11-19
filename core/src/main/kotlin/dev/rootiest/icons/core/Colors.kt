@@ -9,18 +9,26 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 
-// Colors: a port of render-icon.py's recolor, icon_recolored, emblem_recolored, shades and oklch_of, and the
-// generator's oklch(), so a recolored SVG here is what `render-rootiest-icons <icon> --color ...` writes.
+// Colors: a port of render-icon.py's recolor, icon_recolored, emblem_recolored, shades, oklch_of and the auto
+// variant's shifted, mode_pair and auto_shades, and the generator's oklch(), so a recolored SVG here is what
+// `render-rootiest-icons <icon> --color ...` writes.
 
-// A color option's value: a category or status state (kind "cat", value the category, label as typed), or a hex color
-// (kind "hex", value "#rrggbb", label the hex, or "brand" for a Simple Icons brand color).
-data class ColorSpec(val kind: String, val value: String, val label: String = value) {
+// A color option's value: a category or status state (kind "cat", value the category, label as typed), a hex color
+// (kind "hex", value "#rrggbb", label the hex, or "brand" for a Simple Icons brand color), or a pair for the auto
+// variant (kind "pair", value the "#rrggbb" for dark backgrounds, light the one for light backgrounds, label
+// "rrggbb/rrggbb").
+data class ColorSpec(val kind: String, val value: String, val label: String = value, val light: String? = null) {
     val isCategory get() = kind == "cat"
+    val isPair get() = kind == "pair"
 }
 
-// The constants a hex color's shades take, from index.json.
+// The constants a hex color's shades take, from index.json. autoShift: the auto variant's move in OKLCH lightness for
+// one color (render-icon.py AUTO_SHIFT; an index.json from before it has none).
 @Serializable
-data class HexShades(val emblemLift: Double, val emblemC: Double, val tone2Dark: List<Double>, val tone2Light: List<Double>)
+data class HexShades(
+    val emblemLift: Double, val emblemC: Double, val tone2Dark: List<Double>, val tone2Light: List<Double>,
+    val autoShift: Double = 0.07,
+)
 
 // index.json's colors: each category's shades ({Accent, Emblem, Emblem2}: [dark, light]) and the states' categories.
 @Serializable
@@ -38,6 +46,10 @@ data class ColorOptions(
     val tone2: ColorSpec? = null,
 ) {
     val any get() = color != null || logo != null || emblem != null || tone2 != null
+
+    // Without the pairs, which only the auto variant takes.
+    fun withoutPairs() = ColorOptions(color?.takeIf { !it.isPair }, logo?.takeIf { !it.isPair }, emblem?.takeIf { !it.isPair },
+        tone2?.takeIf { !it.isPair })
 }
 
 private val HEX_RE = Regex("#[0-9a-fA-F]{3,8}\\b")
@@ -78,9 +90,15 @@ fun oklchOf(hex: String): Triple<Double, Double, Double> {
     return Triple(L, hypot(A, B), pyMod(Math.toDegrees(atan2(B, A)), 360.0))
 }
 
-// render-icon.py color_spec(): a category, a status state or a hex color (the # optional); null when it is none.
+// render-icon.py color_spec(): a category, a status state, a hex color (the # optional) or a pair of hex colors,
+// dark/light (for the auto variant); null when it is none.
 fun colorSpec(colors: Colors, text: String, hexOnly: Boolean = false): ColorSpec? {
     val t = text.trim().lowercase()
+    fun full(h: String) = if (h.length == 6) h else h.map { c -> "$c$c" }.joinToString("")
+    Regex("^#?([0-9a-f]{3}|[0-9a-f]{6})/#?([0-9a-f]{3}|[0-9a-f]{6})$").find(t)?.let {
+        val (d, l) = it.destructured.let { (a, b) -> full(a) to full(b) }
+        return ColorSpec("pair", "#$d", "$d/$l", "#$l")
+    }
     if (!hexOnly && t in colors.categories) return ColorSpec("cat", t, t)
     if (!hexOnly) colors.states[t]?.let { return ColorSpec("cat", it, t) }
     val m = Regex("^#?([0-9a-f]{3}|[0-9a-f]{6})$").find(t) ?: return null
@@ -117,9 +135,59 @@ fun recolor(svg: String, main: String?, tone2: String?): String {
     }
 }
 
-// render-icon.py icon_parts(): {class: [dark, light]} from the options.
-fun iconParts(colors: Colors, o: ColorOptions): Map<String, List<String>> {
+// render-icon.py shifted(): a color dl lighter (negative: deeper) in OKLCH lightness, its chroma and hue kept.
+fun shifted(hex: String, dl: Double): String {
+    val (L, C, H) = oklchOf(hex)
+    return oklch(min(max(L + dl, 0.2), 0.95), C, H)
+}
+
+// render-icon.py mode_pair(): one option's color for dark and for light backgrounds, [dark, light]: a pair as given, a
+// category's logo color or a hex color moved autoShift each way.
+fun modePair(colors: Colors, spec: ColorSpec): List<String> {
+    if (spec.isPair) return listOf(spec.value, spec.light!!)
+    val one = if (spec.isCategory) shades(colors, spec).getValue("Accent")[0] else spec.value
+    return listOf(shifted(one, colors.hex.autoShift), shifted(one, -colors.hex.autoShift))
+}
+
+// render-icon.py auto_shades(): shades() for the auto variant. A pair is the logo as given, the emblem and tone 2 from
+// each side; one color is its color-variant family with the logo and emblem moved autoShift lighter for dark
+// backgrounds and deeper for light ones (one that already switches, neutral, stays as it is).
+fun autoShades(colors: Colors, spec: ColorSpec): Map<String, List<String>> {
+    if (spec.isPair) {
+        val d = shades(colors, ColorSpec("hex", spec.value))
+        val l = shades(colors, ColorSpec("hex", spec.light!!))
+        return d.keys.associateWith { listOf(d.getValue(it)[0], l.getValue(it)[1]) }
+    }
+    val s = shades(colors, spec)
+    val a = s.getValue("Accent")
+    if (a[0] != a[1]) return s
+    val k = colors.hex.autoShift
+    val e = s.getValue("Emblem")
+    return linkedMapOf(
+        "Accent" to listOf(shifted(a[0], k), shifted(a[1], -k)),
+        "Emblem" to listOf(shifted(e[0], k), shifted(e[1], -k)),
+        "Emblem2" to s.getValue("Emblem2"),
+    )
+}
+
+// A tone-2 option's [dark, light]: a pair as given, a hex color in both.
+private fun tone2Pair(spec: ColorSpec) = if (spec.isPair) listOf(spec.value, spec.light!!) else listOf(spec.value, spec.value)
+
+// render-icon.py icon_parts(): {class: [dark, light]} from the options. In the auto variant each part takes its dark
+// and light colors from autoShades() and modePair().
+fun iconParts(colors: Colors, o: ColorOptions, variant: String = "color"): Map<String, List<String>> {
     val parts = LinkedHashMap<String, List<String>>()
+    if (variant == "auto") {
+        o.color?.let { parts.putAll(autoShades(colors, it)) }
+        o.logo?.let { parts["Accent"] = autoShades(colors, it).getValue("Accent") }
+        o.emblem?.let {
+            // a category emblem is its own tints; a hex one, or a pair, is the color itself, moved or as given
+            parts["Emblem"] = if (it.isCategory) autoShades(colors, it).getValue("Emblem") else modePair(colors, it)
+            parts["Emblem2"] = autoShades(colors, it).getValue("Emblem2")
+        }
+        o.tone2?.let { parts["Emblem2"] = tone2Pair(it) }
+        return parts
+    }
     o.color?.let { parts.putAll(shades(colors, it)) }
     o.logo?.let { parts["Accent"] = shades(colors, it).getValue("Accent") }
     o.emblem?.let {
@@ -132,7 +200,7 @@ fun iconParts(colors: Colors, o: ColorOptions): Map<String, List<String>> {
 }
 
 // render-icon.py icon_recolored(): the current-color-scheme block rewritten for these colors.
-fun iconRecolored(colors: Colors, text: String, o: ColorOptions): String {
+fun iconRecolored(colors: Colors, text: String, o: ColorOptions, variant: String = "color"): String {
     val m = Regex("(<style id=\"current-color-scheme\"[^>]*>)([\\s\\S]*?)(</style>)").find(text) ?: return text
     val css = m.groupValues[2]
     val media = Regex("@media \\(prefers-color-scheme: light\\)\\{([\\s\\S]*)\\}").find(css)
@@ -142,7 +210,7 @@ fun iconRecolored(colors: Colors, text: String, o: ColorOptions): String {
     }
     val base = rules(baseCss)
     val light = if (media != null) rules(media.groupValues[1]) else LinkedHashMap()
-    for ((cls, pair) in iconParts(colors, o)) {
+    for ((cls, pair) in iconParts(colors, o, variant)) {
         if (cls !in base) continue
         base[cls] = pair[0]
         if (pair[1] != pair[0]) light[cls] = pair[1] else light.remove(cls)
@@ -159,9 +227,18 @@ fun iconRecolored(colors: Colors, text: String, o: ColorOptions): String {
     return text.substring(0, start) + indent + out + tail + text.substring(start + css.length)
 }
 
-// render-icon.py emblem_recolored(): the emblem in one color, its tone-2 parts in another (or as they are).
-fun emblemRecolored(colors: Colors, text: String, o: ColorOptions): String {
+// render-icon.py emblem_recolored(): the emblem in one color, its tone-2 parts in another (or as they are). In the auto
+// variant (text: the emblem's own file), a dark and a light version joined (autoSvg): the emblem in modePair()'s
+// colors (white and black without one), its tone-2 parts in the color's tone 2 (or the tone-2 option's), the other end.
+fun emblemRecolored(colors: Colors, text: String, o: ColorOptions, variant: String = "color"): String {
     val spec = o.emblem ?: o.color
+    if (variant == "auto") {
+        val mono = MONO.getValue("dark") to MONO.getValue("light")
+        val main = spec?.let { modePair(colors, it) } ?: listOf(mono.first.first, mono.second.first)
+        val tone2 = o.tone2?.let(::tone2Pair) ?: spec?.let { autoShades(colors, it).getValue("Emblem2") }
+            ?: listOf(mono.first.second, mono.second.second)
+        return autoSvg(recolor(text, main[0], tone2[0]), recolor(text, main[1], tone2[1]))
+    }
     val main = spec?.let { if (it.isCategory) shades(colors, it).getValue("Accent")[0] else it.value }
     return recolor(text, main, o.tone2?.value)
 }

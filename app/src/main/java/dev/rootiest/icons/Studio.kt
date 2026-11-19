@@ -206,10 +206,12 @@ class Studio(private val repo: Repo, val index: Index) {
         val stemBase: String
         val args = ArrayList<String>()
         var built = false
+        var raw: String? = null // an emblem alone: its own file, which the auto variant recolors in two versions
         if (!whole) {
             val keep = if (subject is EmblemSubject) subject.entry.keepFill else e!!.keep
             val twoTone = if (subject is EmblemSubject) subject.entry.twoTone else e!!.twoTone
             val base = if (subject is EmblemSubject) repo.svg("emblems/${subject.entry.name}.svg") else emblemSvg(cfg, e!!.body, e.bbox, e.keep, e.about)
+            raw = base
             text = if (subject is EmblemSubject && keep) base else emblemVariant(base, c.variant)
             parts = Parts(emblem = !keep, tone2 = twoTone && !keep)
             stemBase = if (subject is EmblemSubject) subject.entry.name else s.stem
@@ -248,12 +250,20 @@ class Studio(private val repo: Repo, val index: Index) {
             if (logo?.logo?.keep == true) args += "--keep-logo-colors"
             if (subject is OwnEmblemSubject && ownEmblem?.keep == true) args += "--keep-emblem-colors"
         }
+        // the custom colors recolor the color and auto variants (render-icon.py check_colors), a pair only auto; a
+        // brand's color is the default in the color variant alone
         val brandDefault = c.variant == "color" && brandDefault(s)
-        val shown = if (c.variant != "color") null else if (c.colors.any) c.colors else if (brandDefault) ColorOptions(color = brandSpec(s)) else null
+        val chosen = if (c.variant == "auto") c.colors else c.colors.withoutPairs()
+        val shown = when {
+            c.variant != "color" && c.variant != "auto" -> null
+            chosen.any -> chosen
+            brandDefault -> ColorOptions(color = brandSpec(s))
+            else -> null
+        }
         val colored = when {
             shown == null -> text
-            whole -> iconRecolored(index.colors, text, shown)
-            else -> emblemRecolored(index.colors, text, shown)
+            whole -> iconRecolored(index.colors, text, shown, c.variant)
+            else -> emblemRecolored(index.colors, raw!!, shown, c.variant)
         }
         return Drawn(colored, !whole, built, parts, stemBase, args, shown, brandDefault)
     }
@@ -265,8 +275,14 @@ fun commandLine(d: Drawn, c: Choices, morphName: String? = null): String {
     val args = ArrayList(d.args)
     if (c.variant != "color") args += listOf("--variant", c.variant)
     if (c.padded && !d.isEmblem) args += "--padded"
-    for ((flag, spec) in listOf("--color" to c.colors.color, "--logo-color" to c.colors.logo, "--emblem-color" to c.colors.emblem, "--tone2-color" to c.colors.tone2)) {
-        if (spec != null && c.variant == "color") args += listOf(flag, spec.label.removePrefix("#"))
+    // the color options, for the color and auto variants (a pair, dark/light, for auto alone)
+    val given = when (c.variant) {
+        "auto" -> c.colors
+        "color" -> c.colors.withoutPairs()
+        else -> ColorOptions()
+    }
+    for ((flag, spec) in listOf("--color" to given.color, "--logo-color" to given.logo, "--emblem-color" to given.emblem, "--tone2-color" to given.tone2)) {
+        if (spec != null) args += listOf(flag, spec.label.removePrefix("#"))
     }
     if (c.layouts != listOf("auto")) args += listOf("--layout", c.layouts.joinToString(","))
     // auto makes an SVG only, which --variant auto implies: no sizes, formats or background

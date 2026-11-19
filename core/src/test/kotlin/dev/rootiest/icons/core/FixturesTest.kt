@@ -31,7 +31,7 @@ class FixturesTest {
     private fun JsonObject.text(k: String) = str(k)?.let { texts.getValue(it).jsonPrimitive.content }
     private fun JsonObject.nums(k: String) = getValue(k).jsonArray.map { it.jsonPrimitive.double }
     private fun cases(name: String) = fx.getValue(name).jsonArray.map { it.jsonObject }
-    private fun spec(e: JsonElement?) = (e as? JsonObject)?.let { ColorSpec(it.str("kind")!!, it.str("value")!!, it.str("label")!!) }
+    private fun spec(e: JsonElement?) = (e as? JsonObject)?.let { ColorSpec(it.str("kind")!!, it.str("value")!!, it.str("label")!!, it.str("light")) }
     private fun options(o: JsonObject) = ColorOptions(spec(o["color"]), spec(o["logo"]), spec(o["emblem"]), spec(o["tone2"]))
 
     private fun check(name: String, wants: List<Pair<String, String>>) {
@@ -58,12 +58,25 @@ class FixturesTest {
     })
 
     @Test
+    fun colorSpecs() {
+        check("color spec", cases("colorSpecs").map { c ->
+            spec(c["want"]).toString() to colorSpec(colors, c.str("text")!!, c.getValue("hexOnly").jsonPrimitive.boolean).toString()
+        })
+        // an index.json from before the auto variant's shift has none: render-icon.py's AUTO_SHIFT
+        val old = IndexJson.decodeFromString<HexShades>("{\"emblemLift\":0.1,\"emblemC\":0.1,\"tone2Dark\":[0.3,0.1],\"tone2Light\":[0.9,0.1]}")
+        assertEquals(0.07, old.autoShift, 0.0)
+        assertTrue("index.json's autoShift", colors.hex.autoShift == 0.07)
+    }
+
+    @Test
     fun recoloring() {
         check("recolor", cases("recolor").map { c ->
             val text = c.text("text")!!
             val o = options(c.getValue("o").jsonObject)
-            c.str("want")!! to sha(if (c.getValue("emblem").jsonPrimitive.boolean) emblemRecolored(colors, text, o) else iconRecolored(colors, text, o))
+            val variant = c.str("variant")!!
+            c.str("want")!! to sha(if (c.getValue("emblem").jsonPrimitive.boolean) emblemRecolored(colors, text, o, variant) else iconRecolored(colors, text, o, variant))
         })
+        assertTrue("auto recolorings", cases("recolor").count { it.str("variant") == "auto" } > 100)
         check("mono", cases("mono").map { it.str("want")!! to sha(recolor(it.text("text")!!, it.str("main"), it.str("tone2"))) })
     }
 
