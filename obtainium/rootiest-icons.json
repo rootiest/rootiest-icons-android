@@ -1,0 +1,13 @@
+{
+  "apps": [
+    {
+      "id": "dev.rootiest.icons",
+      "url": "https://git.rootiest.dev/rootiest/rootiest-icons-android",
+      "author": "rootiest",
+      "name": "Rootiest Icons",
+      "preferredApkIndex": 0,
+      "additionalSettings": "{\"includePrereleases\":false,\"includeDrafts\":false,\"fallbackToOlderReleases\":true,\"filterReleaseTitlesByRegEx\":\"\",\"invertReleaseTitlesFilter\":false,\"filterReleaseNotesByRegEx\":\"\",\"invertReleaseNotesFilter\":false,\"verifyLatestTag\":false,\"sortMethodChoice\":\"date\",\"useLatestAssetDateAsReleaseDate\":false,\"releaseTitleAsVersion\":false,\"versionExtractionRegEx\":\"\",\"matchGroupToUse\":\"\",\"versionDetection\":true,\"releaseDateAsVersion\":false,\"useVersionCodeAsOSVersion\":false,\"apkFilterRegEx\":\"^rootiest-icons-[0-9]\",\"invertAPKFilter\":false,\"autoApkFilterByArch\":true,\"minimumUpdateAgeDays\":\"\",\"exemptFromBackgroundUpdates\":false,\"skipUpdateNotifications\":false,\"refreshBeforeDownload\":false,\"detectionDateAsReleaseDate\":false,\"trackOnly\":false,\"appName\":\"\",\"appAuthor\":\"\",\"installerMode\":\"\",\"shizukuPretendToBeGooglePlay\":false,\"allowInsecure\":false,\"allowedSigningCertHashes\":\"\",\"about\":\"\",\"updateHealthStaleRelease\":\"\",\"updateHealthStaleVersion\":\"\",\"updateHealthFailedChecks\":\"\",\"updateHealthArchived\":\"\",\"updateHealthFilteredReleases\":\"\"}",
+      "overrideSource": "Codeberg"
+    }
+  ]
+}
