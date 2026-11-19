@@ -28,6 +28,8 @@ data class Index(
     val compose: ComposeConfig,
     val icons: List<IconEntry>,
     val emblems: List<EmblemEntry>,
+    // the animated status badges (color/animated/<name>.svg); absent from an older catalogue
+    val animated: List<AnimatedEntry> = emptyList(),
 )
 
 @Serializable
@@ -64,6 +66,17 @@ data class EmblemEntry(
     val description: String = "",
     val twoTone: Boolean = false,
     val keepFill: Boolean = false,
+)
+
+// An animated status badge: a change from one state to another (plays once, ends on the new state), a heartbeat's
+// loop (from and to the same state), or a shape's cycle through every state (from and to null, loops).
+@Serializable
+data class AnimatedEntry(
+    val name: String,
+    val from: String? = null,
+    val to: String? = null,
+    val shape: String = "",
+    val padded: Boolean = false,
 )
 
 // The colors of a built icon in one variant: logo, emblem, second tone (or none) and, for the color variant, the

@@ -183,7 +183,7 @@ private fun animatedValues(css: String, t: Double, light: Boolean): Pair<Map<Str
             val name = a[0]
             val dur = a[1].removeSuffix("s").toDouble()
             val timing = timingOf(a.getOrElse(2) { "linear" })
-            val p = if (a.getOrNull(3) == "infinite") (t % dur) / dur else min(t / dur, 1.0)
+            val p = progress(t, dur, iterations(a.getOrNull(3)))
             val ks = frames[name] ?: continue
             for (prop in ks.flatMap { it.second.keys }.distinct()) {
                 val under = base[s]?.get(prop) ?: when (prop) {
@@ -258,8 +258,17 @@ private fun pathLength(name: String, attrs: String): Double {
     return total
 }
 
+// How many times an animation plays: its iteration count (CSS) or repeatCount (SMIL); null, forever.
+private fun iterations(count: String?): Double? =
+    if (count == "infinite" || count == "indefinite") null else count?.toDoubleOrNull() ?: 1.0
+
+// How far through its current run an animation of dur seconds is at t, from 0 to 1: one that plays a number of times
+// starts each run over, then holds its end.
+private fun progress(t: Double, dur: Double, count: Double?): Double =
+    if (count == null || t < dur * count) (t % dur) / dur else 1.0
+
 // An animated path's <animate>, read: its values, key times, splines and timing.
-private class Smil(val values: List<String>, val keys: List<Double>, val splines: List<List<Double>>, val dur: Double, val forever: Boolean, val spline: Boolean)
+private class Smil(val values: List<String>, val keys: List<Double>, val splines: List<List<Double>>, val dur: Double, val count: Double?, val spline: Boolean)
 
 private val smils = Memo<String, Smil>(64)
 
@@ -271,11 +280,11 @@ private fun smilD(attrs: String, t: Double): String {
             getAttr(attrs, "keyTimes")?.split(";")?.map { it.toDouble() } ?: values.indices.map { it.toDouble() / (values.size - 1) },
             (getAttr(attrs, "keySplines") ?: "").split(";").filter { it.isNotBlank() }.map { s -> s.trim().split(SPACE).map(String::toDouble) },
             (getAttr(attrs, "dur") ?: "1s").removeSuffix("s").toDouble(),
-            getAttr(attrs, "repeatCount") == "indefinite",
+            iterations(getAttr(attrs, "repeatCount")),
             getAttr(attrs, "calcMode") == "spline",
         )
     }
-    val p = if (a.forever) (t % a.dur) / a.dur else min(t / a.dur, 1.0)
+    val p = progress(t, a.dur, a.count)
     val keys = a.keys
     for (i in 0 until keys.size - 1) {
         if (p in keys[i]..keys[i + 1]) {
@@ -384,4 +393,42 @@ fun frameTimes(animate: String, loop: Boolean, duration: Double?): Pair<List<Dou
     val count = max(1, pyRound(dur * FPS).toInt())  // half to even, as Python rounds: 2.5 s is 62 frames
     val once = animate == "pop" || (animate in setOf("draw", "morph") && !loop)
     return (List(count) { it.toDouble() / FPS } + if (once) listOf(dur) else emptyList()) to once
+}
+
+// How long a published animated file (an animated status badge) plays, and whether it loops, read from its own text:
+// the durations and iteration counts of the CSS animations in its animation stylesheet and of its SMIL <animate>s. One
+// that loops plays until all its loops line up again; one that plays once, until its last animation ends.
+data class PlayTime(val seconds: Double, val loops: Boolean)
+
+private val ANIMATE_TAG = Regex("<animate\\b[^>]*>")
+
+fun playTime(svgText: String): PlayTime {
+    val runs = ArrayList<Pair<Double, Double?>>()  // seconds, times (null: forever)
+    ANIMATION_STYLE.find(svgText)?.let { style ->
+        for (r in stylesheet(style.groupValues[1]).first) {
+            for (item in splitTop(r.decls["animation"] ?: continue)) {
+                val a = item.split(SPACE)
+                val dur = a.getOrNull(1)?.removeSuffix("s")?.toDoubleOrNull() ?: continue
+                runs += dur to iterations(a.getOrNull(3))
+            }
+        }
+    }
+    for (m in ANIMATE_TAG.findAll(svgText)) {
+        val dur = getAttr(m.value, "dur")?.removeSuffix("s")?.toDoubleOrNull() ?: continue
+        runs += dur to iterations(getAttr(m.value, "repeatCount"))
+    }
+    val forever = runs.filter { it.second == null && it.first > 0 }.map { pyRound(it.first * 1000) }
+    if (forever.isEmpty()) return PlayTime(runs.maxOfOrNull { it.first * (it.second ?: 1.0) } ?: 0.0, false)
+    fun gcd(a: Long, b: Long): Long = if (b == 0L) a else gcd(b, a % b)
+    val ms = forever.reduce { a, b -> a / gcd(a, b) * b }
+    // loops that never line up within a minute: the longest one stands for them
+    return PlayTime(if (ms <= 60_000) ms / 1000.0 else forever.max() / 1000.0, true)
+}
+
+// The moments a published animated file's frames show, FPS a second, from its own play time: one run of a loop, or
+// the whole of one that plays once, its last frame included; and whether it plays once.
+fun playFrames(svgText: String): Pair<List<Double>, Boolean> {
+    val (seconds, loops) = playTime(svgText)
+    val count = max(1, pyRound(seconds * FPS).toInt())
+    return (List(count) { it.toDouble() / FPS } + if (loops) emptyList() else listOf(seconds)) to !loops
 }
