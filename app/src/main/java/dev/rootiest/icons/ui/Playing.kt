@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,8 +37,9 @@ import java.nio.ByteBuffer
 
 // An animated WebP or GIF, playing at size (scaled as it is decoded). With replay, a tap plays it again from the start;
 // without (a file's tile, where a tap shares it), one that plays once plays again after holding its end a moment.
+// With again, it is played from outside: it starts over each time again changes, and one that plays once holds its end.
 @Composable
-internal fun AnimatedImage(bytes: ByteArray, size: Dp, description: String?, modifier: Modifier = Modifier, replay: Boolean = false) {
+internal fun AnimatedImage(bytes: ByteArray, size: Dp, description: String?, modifier: Modifier = Modifier, replay: Boolean = false, again: Int? = null) {
     val px = with(LocalDensity.current) { size.roundToPx() }
     val drawable by produceState<Drawable?>(null, bytes, px) {
         value = withContext(Dispatchers.Default) {
@@ -60,17 +62,17 @@ internal fun AnimatedImage(bytes: ByteArray, size: Dp, description: String?, mod
             override fun scheduleDrawable(who: Drawable, what: Runnable, `when`: Long) { main.postAtTime(what, who, `when`) }
             override fun unscheduleDrawable(who: Drawable, what: Runnable) { main.removeCallbacks(what, who) }
         }
-        val again = Runnable { (d as? AnimatedImageDrawable)?.start() }
+        val restart = Runnable { (d as? AnimatedImageDrawable)?.start() }
         val ended = object : Animatable2.AnimationCallback() {
-            override fun onAnimationEnd(drawable: Drawable?) { main.postDelayed(again, 2000) }
+            override fun onAnimationEnd(drawable: Drawable?) { main.postDelayed(restart, 2000) }
         }
         d?.callback = callback
         if (d is AnimatedImageDrawable) {
-            if (!replay && d.repeatCount != AnimatedImageDrawable.REPEAT_INFINITE) d.registerAnimationCallback(ended)
+            if (!replay && again == null && d.repeatCount != AnimatedImageDrawable.REPEAT_INFINITE) d.registerAnimationCallback(ended)
             d.start()
         }
         onDispose {
-            main.removeCallbacks(again)
+            main.removeCallbacks(restart)
             if (d is AnimatedImageDrawable) {
                 d.unregisterAnimationCallback(ended)
                 d.stop()
@@ -78,7 +80,10 @@ internal fun AnimatedImage(bytes: ByteArray, size: Dp, description: String?, mod
             d?.callback = null
         }
     }
-    val tap = if (replay && d is AnimatedImageDrawable) Modifier.clickable(interactionSource = null, indication = null) { d.stop(); d.start() } else Modifier
+    LaunchedEffect(again) {
+        if (again != null && d is AnimatedImageDrawable) { d.stop(); d.start() }
+    }
+    val tap = if (replay && again == null && d is AnimatedImageDrawable) Modifier.clickable(interactionSource = null, indication = null) { d.stop(); d.start() } else Modifier
     Canvas(modifier.size(size).semantics { description?.let { contentDescription = it } }.then(tap)) {
         tick
         if (d != null) {

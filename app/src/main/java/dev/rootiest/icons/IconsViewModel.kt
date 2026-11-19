@@ -63,6 +63,8 @@ class IconsViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var variant by mutableStateOf("color")
     var category by mutableStateOf("all")
+    // the animated status badges' shape (null: the first)
+    var animatedShape by mutableStateOf<String?>(null)
     var other by mutableStateOf(OtherSets())
         private set
 
