@@ -67,6 +67,18 @@ class FixturesTest {
         check("mono", cases("mono").map { it.str("want")!! to sha(recolor(it.text("text")!!, it.str("main"), it.str("tone2"))) })
     }
 
+    @Test
+    fun autoVariant() {
+        fun orNull(make: () -> String) = try { make() } catch (e: UnusableSvg) { null }
+        val all = cases("autos")
+        check("auto emblems", all.filter { it.str("text") != null }.map { c ->
+            c.str("want")!! to sha(emblemVariant(c.text("text")!!, "auto"))
+        })
+        check("auto pairs", all.filter { it.str("dark") != null }.map { c ->
+            (c.str("want") ?: "refused") to (orNull { autoSvg(c.str("dark")!!, c.str("light")!!) } ?: "refused")
+        })
+    }
+
     private fun emblem(e: JsonObject, thick: Double?) = Emblem(
         body = e.text("body")!!.let { if (thick != null) thicken(it, thick) else it },
         bbox = e.nums("bbox"), about = e.str("about")!!, colors = IndexJson.decodeFromJsonElement(e.getValue("colors")),

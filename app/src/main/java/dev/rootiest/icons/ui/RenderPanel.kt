@@ -86,11 +86,10 @@ import kotlinx.coroutines.withContext
 
 private fun parseColor(hex: String) = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
 
-// The choices' animation, with a morph's target drawn (null until it is) and named as --morph-to takes it, whether
-// this icon can morph here, the published icons it can morph into, why its target could not be drawn, and whether
-// your emblem file can be one.
+// The choices' animation, with a morph's target drawn (null until it is) and named as --morph-to takes it, the
+// published icons it can morph into, why its target could not be drawn, and whether your emblem file can be one.
 internal data class Moving(
-    val animation: Animation, val morphable: Boolean, val targets: List<String>, val failed: String? = null,
+    val animation: Animation, val targets: List<String>, val failed: String? = null,
     val ownTarget: String? = null,
 )
 
@@ -100,17 +99,16 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     // Morphing here, as render-icon.py's morph_target() builds the target: another icon (an emblem, for an emblem)
     // built as this one is, in the same variant, padding, colors, logo and placement. A published one, an icon from
     // another set by name, or your emblem file; a published icon is its file unless your logo or another placement
-    // has it built here (Studio.draw decides, as for this icon). Auto files exist only as published, so not in Auto.
+    // has it built here (Studio.draw decides, as for this icon). In auto, a published target needs its auto/ file.
     val subject = s.subject
     val whole = subject is IconSubject || subject is OwnLogoSubject || c.whole
     val logo = vm.ownLogo.logo
     val ownEmblem = vm.ownEmblem.file
     val rebuilt = (whole && (c.mine || subject is OwnLogoSubject) && logo != null) || (whole && c.placedElsewhere)
-    val morphable = c.variant != "auto"
     val targets = when {
-        !morphable -> emptyList()
         whole -> studio.index.icons.filter {
-            !(subject is IconSubject && it.name == subject.entry.name) && c.variant in it.variants && (!c.padded || it.padded) &&
+            !(subject is IconSubject && it.name == subject.entry.name) && (if (c.variant == "auto") it.auto else c.variant in it.variants) &&
+                (!c.padded || it.padded) &&
                 (!rebuilt || (it.build != null && !it.build!!.colorOnly))
         }.map { it.name }
         else -> studio.index.emblems.filter { !(subject is EmblemSubject && it.name == subject.entry.name) }.map { it.name }
@@ -120,10 +118,10 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     // takes its own brand color, as render-icon.py resolves each
     val colors = d?.shown?.takeIf { c.variant == "color" } ?: c.colors
     val drawnTarget by produceState<Result<Drawn>?>(null, c.morphTo, c.morphKind, c.animate, c.variant, c.padded, colors, c.mine,
-        c.whole, c.preset, c.scale, c.x, c.y, logo, ownEmblem, morphable) {
+        c.whole, c.preset, c.scale, c.x, c.y, logo, ownEmblem) {
         value = null
         val name = c.morphTo
-        if (c.animate != "morph" || !morphable || name == null) return@produceState
+        if (c.animate != "morph" || name == null) return@produceState
         value = runCatching {
             val ts = when (c.morphKind) {
                 "iconify" -> IconifySubject(vm.external(name) ?: throw IllegalArgumentException("$name is not a set and an icon, like tabler:heart"))
@@ -137,7 +135,7 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     val target = drawnTarget?.getOrNull()
     val looping = c.animate == "draw" || c.animate == "morph"
     val name = target?.args?.firstOrNull()
-    return Moving(Animation(c.animate, c.loop && looping, c.duration, name.takeIf { c.animate == "morph" }, target?.text), morphable, targets,
+    return Moving(Animation(c.animate, c.loop && looping, c.duration, name.takeIf { c.animate == "morph" }, target?.text), targets,
         drawnTarget?.exceptionOrNull()?.let { "Could not draw ${c.morphTo}: ${it.message ?: it.javaClass.simpleName}" }, ownTarget)
 }
 
@@ -153,21 +151,24 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
     var sizesText by remember(s) { mutableStateOf(c.sizes.joinToString(", ")) }
     var durationText by remember(s) { mutableStateOf(c.duration?.let { fmtG(it) } ?: "") }
     val durationOk = durationText.isBlank() || durationText.trim().toDoubleOrNull()?.let { it in 0.2..60.0 } == true
-    val (animation, morphable, targets) = moving
+    val (animation, targets) = moving
+    // auto: dark and light in one SVG, which a raster cannot be, so an SVG is all it makes (render-icon.py)
+    val svgOnly = c.variant == "auto"
+    val formats = if (svgOnly) listOf("svg") else c.formats
+    val previewLight = !previewDark(vm) // the results drawn in the mode the previews show
     val looping = c.animate == "draw" || c.animate == "morph"
     var results by remember(d.text, c) { mutableStateOf<List<Rendered>?>(null) }
     var busy by remember { mutableStateOf(false) }
     val stem = stemOf(d.stemBase, d.isEmblem, c.variant, c.padded && !d.isEmblem, d.shown ?: dev.rootiest.icons.core.ColorOptions())
     val layouts = if (small.isEmpty()) listOf("auto") else c.layouts
-    val files = plannedFiles(stem, layouts, c.sizes, c.formats, animation.tag)
+    val files = plannedFiles(stem, layouts, c.sizes, formats, animation.tag)
     val problem = when {
-        c.sizes.isEmpty() -> "Give at least one size, from 1 to $MAX_PX px."
-        c.formats.isEmpty() -> "Pick at least one format."
+        !svgOnly && c.sizes.isEmpty() -> "Give at least one size, from 1 to $MAX_PX px."
+        formats.isEmpty() -> "Pick at least one format."
         layouts.isEmpty() -> "Pick at least one layout."
-        "ico" in c.formats && c.sizes.max() > ICO_MAX -> "An .ico holds sizes up to $ICO_MAX px: drop the larger sizes or ICO."
-        c.background != null && parseColor(c.background) == null -> "The background is not a color like #1e1e2e."
-        c.animate != "none" && c.formats.none { it in setOf("svg", "webp", "gif") } -> "Animation plays in the SVG, WebP and GIF: pick one of them."
-        c.animate == "morph" && !morphable -> "Auto files exist only as published: pick color, dark or light to morph."
+        "ico" in formats && c.sizes.max() > ICO_MAX -> "An .ico holds sizes up to $ICO_MAX px: drop the larger sizes or ICO."
+        !svgOnly && c.background != null && parseColor(c.background) == null -> "The background is not a color like #1e1e2e."
+        c.animate != "none" && formats.none { it in setOf("svg", "webp", "gif") } -> "Animation plays in the SVG, WebP and GIF: pick one of them."
         c.animate == "morph" && c.morphTo == null -> "Pick an icon to morph into."
         c.animate == "morph" && moving.failed != null -> moving.failed
         c.animate == "morph" && animation.target == null -> "Getting ${c.morphTo}…"
@@ -199,7 +200,10 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                     Chips(listOf("auto", "full") + small.map(Int::toString), c.layouts, mapOf("auto" to "auto")) { change(c.copy(layouts = it)) }
                 }
             }
-            Field("Sizes") {
+            if (svgOnly) {
+                Text("SVG only: auto switches between the dark and light versions with the viewer's mode, which a raster " +
+                    "cannot do. Pick dark or light for PNG, WebP, ICO or GIF.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+            } else Field("Sizes") {
                 OutlinedTextField(
                     value = sizesText,
                     onValueChange = { text ->
@@ -214,7 +218,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Field("Formats") {
+            if (!svgOnly) Field("Formats") {
                 Chips(listOf("png", "webp", "ico", "svg", "gif"), c.formats, mapOf("png" to "PNG", "webp" to "WebP", "ico" to "ICO", "svg" to "SVG", "gif" to "GIF")) { change(c.copy(formats = it)) }
                 if (c.animate != "none" && ("webp" in c.formats || "gif" in c.formats)) {
                     Text("WebP and GIF are animated, $FPS frames a second; PNG and ICO stay still.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
@@ -249,7 +253,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                             },
                             style = MaterialTheme.typography.bodySmall, color = palette.Subtext0,
                         )
-                        if (c.animate == "morph" && morphable) {
+                        if (c.animate == "morph") {
                             var open by remember { mutableStateOf(false) }
                             var asking by remember { mutableStateOf(false) }
                             Box {
@@ -293,7 +297,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                     }
                 }
             }
-            Field("Background") {
+            if (!svgOnly) Field("Background") {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Switch(checked = c.background != null, onCheckedChange = { change(c.copy(background = if (it) "#1e1e2e" else null)) })
                     if (c.background == null) Text("Transparent", color = palette.Subtext0)
@@ -314,7 +318,8 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                     scope.launch {
                         val made = runCatching {
                             withContext(Dispatchers.Default) {
-                                renderFiles(d.text, stem, small, layouts, c.sizes, c.formats, c.background?.let { android.graphics.Color.parseColor(it) }, animation)
+                                renderFiles(d.text, stem, small, layouts, c.sizes, formats, c.background?.takeIf { !svgOnly }?.let { android.graphics.Color.parseColor(it) },
+                                    animation, previewLight = if (svgOnly) previewLight else null)
                             }
                         }
                         busy = false
