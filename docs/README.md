@@ -47,7 +47,8 @@ What differs from the command line tool:
   the app plays one as an animated WebP of its frames: the preview a moment after a choice changes (the still until
   then), and the SVG's tile. The animated WebP and GIF hold the same frames as the tool's (25 a second, a run of
   identical frames kept as one), each drawn by AndroidSVG and put together here rather than by ImageMagick, so the
-  files' bytes differ. A GIF has a palette of its own per frame and no partial transparency.
+  files' bytes differ. A GIF has a palette of its own per frame and no partial transparency, and each frame keeps only
+  the box of pixels that changed (`:core`'s `GifEncoder`, as the homepage writes them), which is lossless.
 - **Morph** works on every icon the app makes, published or built (on your logo, placed elsewhere, from another set
   or your file), into a published icon or emblem, an icon from another set by name, or your emblem file, built as the
   tool's `--morph-to` builds it, in Auto too (into a published icon that has an auto file).
@@ -91,6 +92,7 @@ Two Gradle modules:
 | `Animate.kt` | `animate_svg` (every `--animate`), `animation_tag` |
 | `Morph.kt` | `morph_svg` (`--animate morph`): the emblems' shapes as polygons (each tone apart), paired, aligned and morphed, the rest cross-faded |
 | `Frames.kt` | `frame_svg` and `frame_times`: an animated SVG's values at one moment, as a still SVG for a frame; and `playTime`/`playFrames`, how long a published animated file plays and whether it loops, read from its own text |
+| `Gif.kt` | `GifEncoder`: an animated GIF as the homepage's `GifWriter` writes one, each frame only the box that changed (lossless), a palette per frame in a table just large enough |
 
 `:app` (`app/src/main/java/dev/rootiest/icons/`):
 
@@ -100,7 +102,7 @@ Two Gradle modules:
 | `data/Settings.kt` | The settings, and your own logo and emblem |
 | `render/Svg.kt` | Draws SVG text to a bitmap, and measures what a body draws |
 | `render/Output.kt` | The files of a render, an animation's preview and a published animated file's; saving and sharing them |
-| `render/Animated.kt` | Animated WebP (frames in a VP8X/ANIM container) and GIF (a palette per frame, LZW), from frames taken one at a time |
+| `render/Animated.kt` | Animated WebP (frames in a VP8X/ANIM container) and GIF (by `:core`'s `GifEncoder`), from frames taken one at a time |
 | `Studio.kt` | Turns a subject (an icon, an emblem, a name from another set, your file) and the screen's choices into the SVG, the file names and the command |
 | `IconsViewModel.kt` | The app's state: the catalogue, the search, your files, the stack of screens |
 | `ui/` | The screens (`CatalogueScreen` with `AnimatedBadges`, `DetailScreen`, `RenderPanel`, `OwnScreen`, `SettingsScreen`, `LicensesScreen`, `ArticleScreen`), their shared pieces (`Components`, and `Playing`: animations played), and the theme |
