@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import dev.rootiest.icons.core.ColorSpec
 import dev.rootiest.icons.core.NamedBytes
 import dev.rootiest.icons.core.animateSvg
 import dev.rootiest.icons.core.animationTag
@@ -47,8 +48,9 @@ private val WEBP = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_L
 data class Animation(
     val animate: String = "none", val loop: Boolean = false, val duration: Double? = null,
     val morphTo: String? = null, val target: String? = null,
+    val morphColor: ColorSpec? = null, val morphTone2: ColorSpec? = null, // the target's colors, as they apply
 ) {
-    val tag get() = animationTag(animate, loop, duration, morphTo)
+    val tag get() = animationTag(animate, loop, duration, morphTo, morphColor, morphTone2)
     val moves get() = animate != "none" && (animate != "morph" || target != null)
 }
 

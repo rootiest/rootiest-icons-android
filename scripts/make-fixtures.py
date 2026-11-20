@@ -284,15 +284,34 @@ def main():
                                            ("heartbeat", False, None), ("heartbeat", False, 1.25), ("morph", True, 3.5),
                                            ("morph", False, None)][(i + len(o) + len(variant)) % 8]
                 morph_to = "rootiest:tabler:heart" if animate == "morph" else None
+                morph_color, morph_tone2 = [(None, None), (("own", "own"), None), (ri.color_spec("bad"), None),
+                                            (ri.color_spec("ff8800"), ri.color_spec("fff", hex_only=True)),
+                                            (None, ri.color_spec("000", hex_only=True))
+                                            ][(i + len(o)) % 5] if animate == "morph" else (None, None)
                 formats = formats + ["gif"] if animate != "none" and "webp" in formats else formats
                 a = SimpleNamespace(icon=stem, stem_name=stem, emblem=is_emblem, variant=variant, padded=padded and not is_emblem,
                                     color=o.get("color"), logo_color=o.get("logo"), emblem_color=o.get("emblem"),
                                     tone2_color=o.get("tone2"), layouts=layouts, sizes=sizes, formats=formats, out="",
-                                    animate=animate, loop=loop, duration=duration, morph_to=morph_to)
-                plans.append({"stem": stem, "emblem": is_emblem, "variant": variant, "padded": a.padded,
+                                    animate=animate, loop=loop, duration=duration, morph_to=morph_to,
+                                    morph_color=morph_color, morph_tone2_color=morph_tone2)
+                plans.append({"morphColor": spec_js(morph_color), "morphTone2": spec_js(morph_tone2),"stem": stem, "emblem": is_emblem, "variant": variant, "padded": a.padded,
                               "o": {k: spec_js(o.get(k)) for k in ("color", "logo", "emblem", "tone2")},
                               "layouts": [str(v) for v in layouts], "sizes": sizes, "formats": formats,
                               "animate": animate, "loop": loop, "duration": duration, "morphTo": morph_to, "want": ri.planned(a)})
+
+    # The morph target's colors: the icon's options with --morph-color and --morph-tone2-color over them.
+    morph_colors = []
+    keys = (("color", "color"), ("logo", "logo_color"), ("emblem", "emblem_color"), ("tone2", "tone2_color"))
+    for is_emblem in (False, True):
+        for o in ({}, {"color": ri.color_spec("dev")}, {"color": ri.color_spec("dev"), "logo": ri.color_spec("ai")},
+                  {"emblem": ri.color_spec("ff8800"), "tone2": ri.color_spec("fff", hex_only=True)}):
+            for color in (None, ("own", "own"), ri.color_spec("bad"), ri.color_spec("cdd6f4/4c4f69")):
+                for tone2 in (None, ri.color_spec("000", hex_only=True)):
+                    b = SimpleNamespace(emblem=is_emblem, **{k: o.get(j) for j, k in keys})
+                    ri.morph_colors(b, color, tone2)
+                    morph_colors.append({"o": {j: spec_js(o.get(j)) for j, _ in keys}, "emblem": is_emblem,
+                                         "color": spec_js(color), "tone2": spec_js(tone2),
+                                         "want": {j: spec_js(getattr(b, k)) for j, k in keys}})
 
     # Layouts: one kept, as the CLI's --layout N --format svg.
     icon = read("icons", "color", "rootiest-gitea.svg")
@@ -365,7 +384,7 @@ def main():
     numbers = [{"x": v, "f3": f"{v:.3f}", "f4": f"{v:.4f}", "g": f"{v:g}", "g4": f"{v:.4g}", "js": ri.js_num(v)} for v in values]
 
     out = {"colors": colors, "cfg": cfg, "recolor": recolor, "mono": mono_cases, "autos": autos, "shades": shades, "built": built, "alone": alone,
-           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "layouts": layouts, "numbers": numbers,
+           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "morphColors": morph_colors, "layouts": layouts, "numbers": numbers,
            "anims": anims, "animTags": anim_tags, "colorSpecs": color_specs}
     path = os.path.join(HERE, "core", "src", "test", "resources", "fixtures.json")
     with open(path, "w") as f:

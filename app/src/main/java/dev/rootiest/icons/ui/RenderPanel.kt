@@ -66,7 +66,9 @@ import dev.rootiest.icons.core.ColorSpec
 import dev.rootiest.icons.core.Colors
 import dev.rootiest.icons.core.ANIMATIONS
 import dev.rootiest.icons.core.FPS
+import dev.rootiest.icons.core.OWN_COLOR
 import dev.rootiest.icons.core.colorSpec
+import dev.rootiest.icons.core.morphColors
 import dev.rootiest.icons.core.defaultDuration
 import dev.rootiest.icons.core.fmtG
 import dev.rootiest.icons.core.plannedFiles
@@ -90,7 +92,7 @@ private fun parseColor(hex: String) = runCatching { Color(android.graphics.Color
 // published icons it can morph into, why its target could not be drawn, and whether your emblem file can be one.
 internal data class Moving(
     val animation: Animation, val targets: List<String>, val failed: String? = null,
-    val ownTarget: String? = null,
+    val ownTarget: String? = null, val target: Drawn? = null, // the morph's target, drawn
 )
 
 @Composable
@@ -114,9 +116,11 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
         else -> studio.index.emblems.filter { !(subject is EmblemSubject && it.name == subject.entry.name) }.map { it.name }
     }
     val ownTarget = ownEmblem?.name?.takeIf { subject !is OwnEmblemSubject }
-    // the colors this icon shows (its brand's, when that is the default) go to the target too; with none, the target
-    // takes its own brand color, as render-icon.py resolves each
-    val colors = d?.shown?.takeIf { c.variant == "color" } ?: c.colors
+    // the colors this icon shows (its brand's, when that is the default) go to the target too, with the morph's own
+    // over them (render-icon.py morph_colors); with none, the target takes its own brand color, as render-icon.py
+    // resolves each. A second tone only counts for a target that has one.
+    val shown = d?.shown?.takeIf { c.variant == "color" } ?: c.colors
+    val colors = morphColors(shown, !whole, c.morphColor, c.morphTone2)
     val drawnTarget by produceState<Result<Drawn>?>(null, c.morphTo, c.morphKind, c.animate, c.variant, c.padded, colors, c.mine,
         c.whole, c.preset, c.scale, c.x, c.y, logo, ownEmblem) {
         value = null
@@ -135,8 +139,9 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     val target = drawnTarget?.getOrNull()
     val looping = c.animate == "draw" || c.animate == "morph"
     val name = target?.args?.firstOrNull()
-    return Moving(Animation(c.animate, c.loop && looping, c.duration, name.takeIf { c.animate == "morph" }, target?.text), targets,
-        drawnTarget?.exceptionOrNull()?.let { "Could not draw ${c.morphTo}: ${it.message ?: it.javaClass.simpleName}" }, ownTarget)
+    return Moving(Animation(c.animate, c.loop && looping, c.duration, name.takeIf { c.animate == "morph" }, target?.text,
+        c.morphColor.takeIf { target?.parts?.emblem == true }, c.morphTone2.takeIf { target?.parts?.tone2 == true }), targets,
+        drawnTarget?.exceptionOrNull()?.let { "Could not draw ${c.morphTo}: ${it.message ?: it.javaClass.simpleName}" }, ownTarget, target)
 }
 
 // Everything render-rootiest-icons makes, made here: the colors, the layouts, any sizes, PNG, WebP, ICO, SVG and GIF,
@@ -277,6 +282,19 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                                 asking = false
                                 change(c.copy(morphTo = name, morphKind = "iconify"))
                             }
+                            // The target's colors (--morph-color, --morph-tone2-color): its emblem the icon's colors (the
+                            // default), its own, or another; its second tone, when it has one, another hex color. The logo
+                            // keeps the icon's, as it does not morph.
+                            val t = moving.target
+                            if ((c.variant == "color" || c.variant == "auto") && t != null && t.parts.emblem) {
+                                ColorRow("Its emblem", c.morphColor, colors, "The icon's colors", null, c.variant == "auto",
+                                    extra = (if (t.built) "Its own color" else "As published") to OWN_COLOR) {
+                                    change(c.copy(morphColor = it))
+                                }
+                                if (t.parts.tone2) ColorRow("Its 2nd tone", c.morphTone2, colors, "The icon's colors", null, false, hexOnly = true) {
+                                    change(c.copy(morphTone2 = it))
+                                }
+                            }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (looping) {
@@ -375,7 +393,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
         }
     }
     Note("The same with the command line tool:", Modifier)
-    val command = commandLine(d, c.copy(layouts = layouts), animation.morphTo)
+    val command = commandLine(d, c.copy(layouts = layouts), animation.morphTo, animation.morphColor, animation.morphTone2)
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(palette.Mantle).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(command, Modifier.weight(1f).padding(vertical = 10.dp), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         IconButton(onClick = {
@@ -413,7 +431,9 @@ private fun Chips(values: List<String>, selected: List<String>, names: Map<Strin
 // One part's color: the default, a category, a status state, a brand's own, or any hex color; in the auto variant
 // (pairs) also a dark/light pair, one color for dark backgrounds and one for light ones, as `cdd6f4/4c4f69`.
 @Composable
-private fun ColorRow(label: String, value: ColorSpec?, colors: Colors, default: String, brand: ColorSpec?, pairs: Boolean, hexOnly: Boolean = false, change: (ColorSpec?) -> Unit) {
+// extra: one more choice after the default, its text and value (the morph target's own color).
+private fun ColorRow(label: String, value: ColorSpec?, colors: Colors, default: String, brand: ColorSpec?, pairs: Boolean, hexOnly: Boolean = false,
+                     extra: Pair<String, ColorSpec>? = null, change: (ColorSpec?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     // what the row edits: a hex color of its own, or a pair; remembered per variant, so leaving auto (which drops a
     // pair) starts the row again from its value
@@ -435,6 +455,7 @@ private fun ColorRow(label: String, value: ColorSpec?, colors: Colors, default: 
                         pair -> "Dark/light pair"
                         custom -> "Custom"
                         value == null -> default
+                        value == extra?.second -> extra.first
                         else -> value.label
                     })
                 }
@@ -455,6 +476,7 @@ private fun ColorRow(label: String, value: ColorSpec?, colors: Colors, default: 
                         },
                     )
                     item(default, null)
+                    extra?.let { (text, spec) -> item(text, spec) }
                     if (brand != null && !hexOnly) item("brand (${brand.value})", brand)
                     if (!hexOnly) {
                         colors.categories.keys.forEach { item(it, ColorSpec("cat", it, it)) }

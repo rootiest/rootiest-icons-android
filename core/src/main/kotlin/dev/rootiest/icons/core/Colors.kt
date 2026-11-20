@@ -22,6 +22,22 @@ data class ColorSpec(val kind: String, val value: String, val label: String = va
     val isPair get() = kind == "pair"
 }
 
+// --morph-color's "own": the morph target's own emblem color.
+val OWN_COLOR = ColorSpec("own", "own")
+
+// render-icon.py morph_colors(): the morph target's color options, the icon's (o) with --morph-color and
+// --morph-tone2-color over them: its emblem in that color (OWN_COLOR: the target's own), its second tone in that one.
+// The logo keeps the icon's colors, as it does not morph. emblem: the icon is an emblem alone. Empty when none are left.
+fun morphColors(o: ColorOptions, emblem: Boolean, color: ColorSpec?, tone2: ColorSpec?): ColorOptions {
+    var t = o
+    if (color?.kind == "own") {
+        val logo = if (!emblem && t.color != null) t.logo ?: t.color else t.logo
+        t = ColorOptions(logo = logo)
+    } else if (color != null) t = t.copy(emblem = color)
+    if (tone2 != null) t = t.copy(tone2 = tone2)
+    return t
+}
+
 // The constants a hex color's shades take, from index.json. autoShift: the auto variant's move in OKLCH lightness for
 // one color (render-icon.py AUTO_SHIFT; an index.json from before it has none).
 @Serializable
