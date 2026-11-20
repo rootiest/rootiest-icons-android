@@ -67,6 +67,7 @@ import dev.rootiest.icons.commandLine
 import dev.rootiest.icons.core.ColorSpec
 import dev.rootiest.icons.core.Colors
 import dev.rootiest.icons.core.ANIMATIONS
+import dev.rootiest.icons.core.LOOPABLE
 import dev.rootiest.icons.core.FPS
 import dev.rootiest.icons.core.OWN_COLOR
 import dev.rootiest.icons.core.ColorOptions
@@ -168,7 +169,7 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
         }
     }
     val target = drawnTarget?.getOrNull()
-    val looping = c.animate == "draw" || c.animate == "morph"
+    val looping = c.animate in LOOPABLE
     val name = target?.args?.firstOrNull()?.takeIf { c.animate == "morph" }
     val mc = c.morphColor.takeIf { target?.parts?.emblem == true }
     val mt = c.morphTone2.takeIf { target?.parts?.tone2 == true }
@@ -216,7 +217,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
     val svgOnly = c.variant == "auto"
     val formats = if (svgOnly) listOf("svg") else c.formats
     val previewLight = !previewDark(vm) // the results drawn in the mode the previews show
-    val looping = c.animate == "draw" || c.animate == "morph"
+    val looping = c.animate in LOOPABLE
     var results by remember(d.text, c) { mutableStateOf<List<Rendered>?>(null) }
     var busy by remember { mutableStateOf(false) }
     val chain = moving.chain
@@ -307,7 +308,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                             FilterChip(
                                 selected = c.animate == a,
                                 onClick = {
-                                    change(c.copy(animate = a, loop = c.loop && (a == "draw" || a == "morph"),
+                                    change(c.copy(animate = a, loop = c.loop && a in LOOPABLE,
                                         formats = if (a != "none" && c.formats.none { it in setOf("svg", "webp", "gif") }) c.formats + "svg" else c.formats))
                                 },
                                 label = { Text(a.replaceFirstChar(Char::uppercase)) },
@@ -323,7 +324,16 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                                 "pulse" -> "The emblem breathes: it grows a little and back, again and again."
                                 "spin" -> "The emblem turns, again and again (best for round ones)."
                                 "shake" -> "The emblem wobbles, then rests, again and again."
+                                "bounce" -> "The emblem hops upward with a slight squash-and-stretch, then rests."
+                                "float" -> "The emblem levitates smoothly up and down, again and again."
+                                "flip" -> "The emblem flips horizontally like a coin, then rests."
+                                "blink" -> "The emblem blinks like a status LED, again and again."
                                 "pop" -> "The emblem bounces in, once."
+                                "tada" -> "A celebratory crouch, pop and wiggle; once, or with a rest when looping."
+                                "ping" -> "A translucent echo radiates outward behind the emblem, again and again."
+                                "fill" -> "The emblem fills up from the bottom over a dimmed copy; once, or filling and draining."
+                                "rainbow" -> "The emblem cycles through the Rootiest category palette, again and again."
+                                "glitch" -> "Short cyan and magenta glitch bursts across the emblem, resting between them."
                                 "morph" -> "It turns into another icon: the emblem's shapes morph, the rest cross-fades; once, or there and back."
                                 else -> "A white glint crosses the emblem now and then."
                             },

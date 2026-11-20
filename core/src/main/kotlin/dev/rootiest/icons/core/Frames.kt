@@ -21,6 +21,8 @@ private val RULE = Regex("([^{}]+)\\{([^{}]*)\\}")
 private val ANIMATION_STYLE = Regex("\\s*<style id=\"animation\"[^>]*>([\\s\\S]*?)</style>")
 private val SMIL_PATH = Regex("(<path\\b[^>]*?)\\sd=\"[^\"]*\"([^>]*)>\\s*<animate attributeName=\"d\"([^>]*)/>\\s*</path>")
 private val SHINE_FILTER = Regex("<g filter=\"url\\(#shine-white\\)\">")
+private val GLITCH_FILTER = Regex("\\s*filter=\"url\\(#glitch-(?:cyan|pink)\\)\"")
+private val TRANSFORM_OP = Regex("(\\w+)\\(([^)]*)\\)")
 private val G_TAG = Regex("<(/?)g\\b[^<>]*?(/?)>")
 
 // What stays the same from frame to frame, worked out once: an animation's frames all come from one SVG, so each
@@ -308,6 +310,39 @@ private fun matches(selector: String, own: Set<String>, above: Set<String>): Boo
     }
 }
 
+// render-icon.py svg_transform(): a CSS transform list about a box's own center as an SVG transform attribute.
+private fun svgTransform(cssTr: String, box: List<Double>): String {
+    val (x0, y0, x1, y1) = box
+    val cx = (x0 + x1) / 2
+    val cy = (y0 + y1) / 2
+    val bw = x1 - x0
+    val bh = y1 - y0
+    val ops = TRANSFORM_OP.findAll(cssTr).map { it.groupValues[1] to it.groupValues[2] }.toList()
+    if (ops.size == 1 && ops[0].first == "rotate") {
+        val v = NUM.find(ops[0].second)!!.value.toDouble()
+        return "rotate(${fmtG(v)} ${fmtG(cx)} ${fmtG(cy)})"
+    }
+    val parts = ArrayList<String>(ops.size)
+    for ((fn, args) in ops) {
+        val nums = NUM.findAll(args).map { it.value.toDouble() }.toList()
+        when (fn) {
+            "rotate" -> parts += "rotate(${fmtG(nums[0])})"
+            "scale" -> parts += if (nums.size == 1) "scale(${fmtG(nums[0])})" else "scale(${fmtG(nums[0])} ${fmtG(nums[1])})"
+            "scaleX" -> parts += "scale(${fmtG(nums[0])} 1)"
+            "scaleY" -> parts += "scale(1 ${fmtG(nums[0])})"
+            "translateX" -> parts += "translate(${fmtG(nums[0] * if ("%" in args) bw / 100 else 1.0)} 0)"
+            "translateY" -> parts += "translate(0 ${fmtG(nums[0] * if ("%" in args) bh / 100 else 1.0)})"
+            "translate" -> {
+                val sp = args.split(",")
+                val vx = nums[0] * if ("%" in sp[0]) bw / 100 else 1.0
+                val vy = if (nums.size > 1) nums[1] * if (sp.size > 1 && "%" in sp[1]) bh / 100 else 1.0 else 0.0
+                parts += "translate(${fmtG(vx)} ${fmtG(vy)})"
+            }
+        }
+    }
+    return "translate(${fmtG(cx)} ${fmtG(cy)}) ${parts.joinToString(" ")} translate(${fmtG(-cx)} ${fmtG(-cy)})"
+}
+
 // The SVG still, at t seconds of its animation, for AndroidSVG: as a viewer in dark mode sees it (the rasters' colors),
 // or with light, in light mode (a preview; its other styles are fixed to light mode by schemeSvg).
 fun frameSvg(svgText: String, t: Double, light: Boolean = false): String {
@@ -318,10 +353,11 @@ fun frameSvg(svgText: String, t: Double, light: Boolean = false): String {
     text = SMIL_PATH.replace(text) {
         "${it.groupValues[1]} d=\"${smilD(it.groupValues[3], t)}\"${it.groupValues[2]}/>"
     }
-    // shine's copy: white, as its filter would make it
+    // shine's copy and glitch's ghost copies: tinted by hand, as AndroidSVG draws no filters
     text = SHINE_FILTER.replace(text, "<g class=\"shine-copy\">")
-    val motion = values[".motion"]?.get("transform")
-    val bands = listOf("sweep-band", "shine-band").associateWith { values[".$it"]?.get("transform") }
+    text = GLITCH_FILTER.replace(text, "")
+    val centered = listOf("motion", "ping-ring", "glitch-a", "glitch-b", "glitch-main").associateWith { values[".$it"]?.get("transform") }
+    val bands = listOf("sweep-band", "shine-band", "fill-band").associateWith { values[".$it"]?.get("transform") }
     // Walk the elements: classes in force, and each element's values.
     val classes = ArrayDeque<Set<String>>()
     val out = StringBuilder()
@@ -340,10 +376,18 @@ fun frameSvg(svgText: String, t: Double, light: Boolean = false): String {
         val above = classes.flatten().toSet()
         val props = LinkedHashMap<String, String>()
         for ((sel, vs) in values) if (matches(sel, own, above)) props.putAll(vs)
-        if ("shine-copy" in above || "shine-copy" in own) {
-            props["color"] = "#ffffff"
+        val tint = when {
+            "shine-copy" in above || "shine-copy" in own -> "#ffffff"
+            "glitch-a" in above || "glitch-a" in own -> "#00e6ff"
+            "glitch-b" in above || "glitch-b" in own -> "#ff004c"
+            else -> null
+        }
+        if (tint != null) {
+            props["color"] = tint
             val fill = getAttr(attrs, "fill")
-            if (fill != null && fill != "none" && fill != "currentColor") props["fill"] = "#ffffff"
+            if (fill != null && fill != "none" && fill != "currentColor") props["fill"] = tint
+            val stroke = getAttr(attrs, "stroke")
+            if (stroke != null && stroke != "none" && stroke != "currentColor") props["stroke"] = tint
         }
         val dash = props.remove("stroke-dasharray")
         val offset = props.remove("stroke-dashoffset")
@@ -360,25 +404,23 @@ fun frameSvg(svgText: String, t: Double, light: Boolean = false): String {
         }
         for ((band, move) in bands) if (move != null && band in own) {
             val v = NUM.find(move)!!.value.toDouble()
-            attrs = setAttr(attrs, "transform", "translate(${fmtG(v)} 0)")
+            val tr = if (move.startsWith("translateY")) "translate(0 ${fmtG(v)})" else "translate(${fmtG(v)} 0)"
+            attrs = setAttr(attrs, "transform", tr)
         }
-        if (motion != null && "motion" in own && empty.isEmpty()) {
-            // the group's contents: to its own closing tag
-            var depth = 1
-            var end = text.length
-            for (g in G_TAG.findAll(text, m.range.last + 1)) {
-                if (g.groupValues[2].isNotEmpty()) continue
-                depth += if (g.groupValues[1].isNotEmpty()) -1 else 1
-                if (depth == 0) { end = g.range.first; break }
-            }
-            val inner = text.substring(m.range.last + 1, end)
-            boxes.get(inner) { drawnBox(inner) }?.let { (x0, y0, x1, y1) ->
-                val cx = (x0 + x1) / 2
-                val cy = (y0 + y1) / 2
-                val fn = motion.substringBefore("(")
-                val v = NUM.find(motion)!!.value.toDouble()
-                attrs = setAttr(attrs, "transform", if (fn == "rotate") "rotate(${fmtG(v)} ${fmtG(cx)} ${fmtG(cy)})"
-                else "translate(${fmtG(cx)} ${fmtG(cy)}) scale(${fmtG(v)}) translate(${fmtG(-cx)} ${fmtG(-cy)})")
+        if (empty.isEmpty()) {
+            val trCss = centered.entries.firstOrNull { (cls, tr) -> tr != null && cls in own }?.value
+            if (trCss != null) {
+                var depth = 1
+                var end = text.length
+                for (g in G_TAG.findAll(text, m.range.last + 1)) {
+                    if (g.groupValues[2].isNotEmpty()) continue
+                    depth += if (g.groupValues[1].isNotEmpty()) -1 else 1
+                    if (depth == 0) { end = g.range.first; break }
+                }
+                val inner = text.substring(m.range.last + 1, end)
+                boxes.get(inner) { drawnBox(inner) }?.let { box ->
+                    attrs = setAttr(attrs, "transform", svgTransform(trCss, box))
+                }
             }
         }
         out.append("<$name$attrs$empty>")
@@ -393,7 +435,7 @@ fun frameSvg(svgText: String, t: Double, light: Boolean = false): String {
 fun frameTimes(animate: String, loop: Boolean, duration: Double?): Pair<List<Double>, Boolean> {
     val dur = duration ?: defaultDuration(animate, loop)
     val count = max(1, pyRound(dur * FPS).toInt())  // half to even, as Python rounds: 2.5 s is 62 frames
-    val once = animate == "pop" || (animate in setOf("draw", "morph") && !loop)
+    val once = animate == "pop" || (animate in LOOPABLE && !loop)
     return (List(count) { it.toDouble() / FPS } + if (once) listOf(dur) else emptyList()) to once
 }
 

@@ -9,13 +9,22 @@ import kotlin.math.sqrt
 // pop move the emblem as a whole; shine sweeps a white glint across it. Each way the icon as it is shows wherever the
 // animation does not play.
 
-val ANIMATIONS = listOf("none", "draw", "heartbeat", "pulse", "spin", "shake", "pop", "shine", "morph")
+val ANIMATIONS = listOf("none", "draw", "heartbeat", "pulse", "spin", "shake", "pop", "shine", "morph",
+    "bounce", "float", "flip", "tada", "ping", "blink", "fill", "rainbow", "glitch")
+val LOOPABLE = setOf("draw", "morph", "tada", "fill")
 
 // Default seconds: the whole drawing, one cycle of a looping drawing, one beat.
 const val DRAW_ONCE = 2.5
 const val DRAW_LOOP = 4.0
 const val HEARTBEAT = 1.6
 const val SHINE = 2.5
+const val TADA_ONCE = 1.0
+const val TADA_LOOP = 2.4
+const val PING = 1.8
+const val FILL_ONCE = 1.8
+const val FILL_LOOP = 3.2
+const val RAINBOW = 4.0
+const val GLITCH = 2.4
 
 // render-icon.py MOTIONS: the emblem moved as a whole, (default seconds, timing, repeats, keyframes).
 private class Motion(val seconds: Double, val timing: String, val count: String, val frames: String)
@@ -26,14 +35,26 @@ private val MOTIONS = mapOf(
         "20%{transform:rotate(10deg)}30%{transform:rotate(-8deg)}40%{transform:rotate(5deg)}"),
     "pop" to Motion(0.6, "ease-out", "1", "0%{transform:scale(0)}60%{transform:scale(1.15)}80%{transform:scale(.95)}" +
         "100%{transform:scale(1)}"),
+    "bounce" to Motion(1.4, "ease-in-out", "infinite", "0%,58%,100%{transform:translateY(0%) scale(1,1)}" +
+        "10%{transform:translateY(3%) scale(1.06,.94)}26%{transform:translateY(-10%) scale(.95,1.06)}" +
+        "42%{transform:translateY(2%) scale(1.04,.96)}50%{transform:translateY(-3%) scale(.99,1.01)}"),
+    "float" to Motion(3.0, "ease-in-out", "infinite", "0%,100%{transform:translateY(0%)}25%{transform:translateY(-6%)}" +
+        "75%{transform:translateY(6%)}"),
+    "flip" to Motion(2.2, "ease-in-out", "infinite", "0%,55%,100%{transform:scaleX(1)}27.5%{transform:scaleX(-1)}"),
+    "blink" to Motion(1.4, "ease-in-out", "infinite", "0%,45%,100%{opacity:1}55%,85%{opacity:.15}"),
 )
 
 // render-icon.py default_duration(): an animation's seconds when none is given.
 fun defaultDuration(animate: String, loop: Boolean = false): Double = when (animate) {
     "draw" -> if (loop) DRAW_LOOP else DRAW_ONCE
     "morph" -> if (loop) MORPH_LOOP else MORPH_ONCE
+    "tada" -> if (loop) TADA_LOOP else TADA_ONCE
+    "fill" -> if (loop) FILL_LOOP else FILL_ONCE
     "heartbeat" -> HEARTBEAT
     "shine" -> SHINE
+    "ping" -> PING
+    "rainbow" -> RAINBOW
+    "glitch" -> GLITCH
     else -> MOTIONS[animate]?.seconds ?: DRAW_ONCE
 }
 
@@ -249,6 +270,144 @@ private fun shineSvg(svgText: String, duration: Double): String {
     return head + "\n  <style id=\"animation\" type=\"text/css\">$css</style>\n  $SHINE_DEFS" + body
 }
 
+// render-icon.py tada_svg(): celebratory crouch, pop and wiggle; once, or with a rest when looping.
+private fun tadaSvg(svgText: String, duration: Double, loop: Boolean): String {
+    val frames = if (loop) {
+        "0%,45%,100%{transform:scale(1) rotate(0deg)}5%,10%{transform:scale(.92) rotate(-5deg)}" +
+            "15%,25%,35%{transform:scale(1.1) rotate(5deg)}20%,30%,40%{transform:scale(1.1) rotate(-5deg)}"
+    } else {
+        "0%,100%{transform:scale(1) rotate(0deg)}10%,20%{transform:scale(.92) rotate(-5deg)}" +
+            "30%,50%,70%{transform:scale(1.1) rotate(5deg)}40%,60%,80%{transform:scale(1.1) rotate(-5deg)}"
+    }
+    val (head, body) = emblemsWrapped(svgText) { g, end -> "${g.substring(0, end)}<g class=\"motion\">${g.substring(end, g.length - 4)}</g></g>" }
+    if (body == null) return head
+    val count = if (loop) "infinite" else "1"
+    val css = ".motion{transform-box:fill-box;transform-origin:center;animation:motion-tada ${fmtG(duration)}s ease-in-out " +
+        "$count both}@keyframes motion-tada{$frames}" +
+        "@media (prefers-reduced-motion: reduce){.motion{animation:none}}"
+    return head + "\n  <style id=\"animation\" type=\"text/css\">$css</style>" + body
+}
+
+// render-icon.py ping_svg(): a translucent echo radiating outward behind the emblem; hidden at rest.
+private fun pingSvg(svgText: String, duration: Double): String {
+    val (head, body) = emblemsWrapped(svgText) { g, end ->
+        "${g.substring(0, end)}<g class=\"ping-ring\" opacity=\"0\">${g.substring(end, g.length - 4)}</g>${g.substring(end, g.length - 4)}</g>"
+    }
+    if (body == null) return head
+    val css = ".ping-ring{transform-box:fill-box;transform-origin:center;animation:ping-ring ${fmtG(duration)}s " +
+        "cubic-bezier(0,0,.2,1) infinite}@keyframes ping-ring{0%{transform:scale(1);opacity:.65}" +
+        "75%,100%{transform:scale(1.45);opacity:0}}" +
+        "@media (prefers-reduced-motion: reduce){.ping-ring{animation:none}}"
+    return head + "\n  <style id=\"animation\" type=\"text/css\">$css</style>" + body
+}
+
+private const val FILL_DEFS = "<defs><mask id=\"fill-mask\" x=\"-0.5\" y=\"-0.5\" width=\"2\" height=\"2\" maskContentUnits=\"objectBoundingBox\">" +
+    "<rect class=\"fill-band\" x=\"-0.5\" y=\"1.05\" width=\"2\" height=\"1.2\" fill=\"#fff\"/></mask></defs>"
+
+// render-icon.py fill_svg(): fills up from the bottom over a dimmed copy; once, or filling, holding and draining.
+private fun fillSvg(svgText: String, duration: Double, loop: Boolean): String {
+    val text = visibleLayouts(svgText)
+    val head = Regex("<svg\\b[^>]*>").find(text) ?: return text
+    val end = head.range.last + 1
+    var body = text.substring(end)
+    fun wrap(group: String): String {
+        val open = group.substring(0, group.indexOf('>'))
+        val cls = getAttr(open, "class")
+        return setAttr(open, "class", (if (cls != null) "$cls " else "") + "fill-base") + group.substring(open.length) +
+            "<g class=\"fill-head\" mask=\"url(#fill-mask)\">$group</g>"
+    }
+    val spans = emblemGroups(body)
+    body = if (spans.isNotEmpty()) {
+        val out = StringBuilder()
+        var at = 0
+        for (span in spans) {
+            out.append(body, at, span.first).append(wrap(body.substring(span)))
+            at = span.last + 1
+        }
+        out.append(body, at, body.length).toString()
+    } else {
+        val defs = body.indexOf("</defs>")
+        val lo = if (defs >= 0) defs + "</defs>".length else 0
+        val last = body.lastIndexOf("</svg>")
+        val hi = if (last >= lo) last else body.length
+        val inner = body.substring(lo, hi)
+        body.substring(0, lo) + "\n  <g class=\"fill-base\">$inner</g><g class=\"fill-head\" mask=\"url(#fill-mask)\">$inner</g>\n" + body.substring(hi)
+    }
+    val count = if (loop) "infinite" else "1 both"
+    val dim = if (loop) "@keyframes fill-dim{0%,100%{opacity:.25}}" else "@keyframes fill-dim{0%,85%{opacity:.25}100%{opacity:1}}"
+    val band = if (loop) "@keyframes fill-band{0%,100%{transform:translateY(0)}45%,65%{transform:translateY(-1.1px)}}"
+    else "@keyframes fill-band{0%{transform:translateY(0)}85%,100%{transform:translateY(-1.1px)}}"
+    val css = ".fill-base{animation:fill-dim ${fmtG(duration)}s linear $count}$dim" +
+        ".fill-band{animation:fill-band ${fmtG(duration)}s ease-in-out $count}$band" +
+        "@media (prefers-reduced-motion: reduce){.fill-base,.fill-band{animation:none}}"
+    return text.substring(0, end) + "\n  <style id=\"animation\" type=\"text/css\">$css</style>\n  $FILL_DEFS" + body
+}
+
+private val RAINBOW_DARK = listOf("#fe9196", "#ffac7d", "#ffd396", "#7bd77f", "#04d5ee", "#74acfe", "#b89eff", "#f190dd")
+private val RAINBOW_LIGHT = listOf("#9f2c3b", "#a24a00", "#a87102", "#107823", "#02707e", "#0f4ea3", "#6040a1", "#8e357e")
+
+// render-icon.py rainbow_svg(): cycles the emblem through the Rootiest category palette (dark and light shades).
+private fun rainbowSvg(svgText: String, duration: Double): String {
+    val text = visibleLayouts(svgText)
+    val head = Regex("<svg\\b[^>]*>").find(text) ?: return text
+    val end = head.range.last + 1
+    var body = text.substring(end)
+    val spans = emblemGroups(body)
+    body = if (spans.isNotEmpty()) {
+        val out = StringBuilder()
+        var at = 0
+        for (span in spans) {
+            val group = body.substring(span)
+            val open = group.substring(0, group.indexOf('>'))
+            val cls = getAttr(open, "class")
+            out.append(body, at, span.first).append(setAttr(open, "class", (if (cls != null) "$cls " else "") + "rainbow")).append(group.substring(open.length))
+            at = span.last + 1
+        }
+        out.append(body, at, body.length).toString()
+    } else {
+        val defs = body.indexOf("</defs>")
+        val lo = if (defs >= 0) defs + "</defs>".length else 0
+        val last = body.lastIndexOf("</svg>")
+        val hi = if (last >= lo) last else body.length
+        body.substring(0, lo) + "\n  <g class=\"rainbow\">${body.substring(lo, hi)}</g>\n" + body.substring(hi)
+    }
+    fun stops(cols: List<String>) = cols.mapIndexed { i, c -> "${fmtG(100.0 * i / cols.size)}%{color:$c}" }.joinToString("") + "100%{color:${cols[0]}}"
+    val sel = ".rainbow,.rainbow .ColorScheme-Emblem,.rainbow .ColorScheme-Accent"
+    val css = "$sel{animation:rainbow-dark ${fmtG(duration)}s linear infinite}" +
+        "@keyframes rainbow-dark{${stops(RAINBOW_DARK)}}" +
+        "@keyframes rainbow-light{${stops(RAINBOW_LIGHT)}}" +
+        "@media (prefers-color-scheme: light){$sel{animation-name:rainbow-light}}" +
+        "@media (prefers-reduced-motion: reduce){$sel{animation:none}}"
+    return text.substring(0, end) + "\n  <style id=\"animation\" type=\"text/css\">$css</style>" + body
+}
+
+private const val GLITCH_DEFS = "<defs><filter id=\"glitch-cyan\"><feColorMatrix type=\"matrix\" " +
+    "values=\"0 0 0 0 0 0 0 0 0 .9 0 0 0 0 1 0 0 0 1 0\"/></filter><filter id=\"glitch-pink\">" +
+    "<feColorMatrix type=\"matrix\" values=\"0 0 0 0 1 0 0 0 0 0 0 0 0 0 .3 0 0 0 1 0\"/></filter></defs>"
+
+// render-icon.py glitch_svg(): short cyan/magenta glitch bursts across the emblem; still between bursts and at rest.
+private fun glitchSvg(svgText: String, duration: Double): String {
+    val (head, body) = emblemsWrapped(svgText) { g, end ->
+        val inner = g.substring(end, g.length - 4)
+        "${g.substring(0, end)}<g class=\"glitch-a\" opacity=\"0\" filter=\"url(#glitch-cyan)\">$inner</g>" +
+            "<g class=\"glitch-b\" opacity=\"0\" filter=\"url(#glitch-pink)\">$inner</g>" +
+            "<g class=\"glitch-main\">$inner</g></g>"
+    }
+    if (body == null) return head
+    val css = ".glitch-a,.glitch-b,.glitch-main{transform-box:fill-box;transform-origin:center}" +
+        ".glitch-a{animation:glitch-a ${fmtG(duration)}s linear infinite}" +
+        ".glitch-b{animation:glitch-b ${fmtG(duration)}s linear infinite}" +
+        ".glitch-main{animation:glitch-main ${fmtG(duration)}s linear infinite}" +
+        "@keyframes glitch-a{0%,76%,85%,88%,96%,100%{transform:translateX(0%);opacity:0}" +
+        "78%,83%{transform:translateX(-8%);opacity:.75}90%,94%{transform:translateX(6%);opacity:.7}}" +
+        "@keyframes glitch-b{0%,76%,85%,88%,96%,100%{transform:translateX(0%);opacity:0}" +
+        "78%,83%{transform:translateX(8%);opacity:.75}90%,94%{transform:translateX(-6%);opacity:.7}}" +
+        "@keyframes glitch-main{0%,76%,85%,88%,96%,100%{transform:translateX(0%)}" +
+        "78%,83%{transform:translateX(3%)}90%,94%{transform:translateX(-3%)}}" +
+        "@media (prefers-reduced-motion: reduce){.glitch-a,.glitch-b,.glitch-main{animation:none}}"
+    return head + "\n  <style id=\"animation\" type=\"text/css\">$css</style>\n  $GLITCH_DEFS" + body
+}
+
 // render-icon.py animate_svg(): the SVG in an animation, duration null for its default; none leaves it as it is.
 fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Boolean = false, target: String? = null): String {
     val d = duration ?: defaultDuration(animate, loop)
@@ -257,6 +416,11 @@ fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Bo
         "morph" -> if (target != null) morphSvg(text, target, d, loop) else text
         "heartbeat" -> heartbeatSvg(text, d)
         "shine" -> shineSvg(text, d)
+        "tada" -> tadaSvg(text, d, loop)
+        "ping" -> pingSvg(text, d)
+        "fill" -> fillSvg(text, d, loop)
+        "rainbow" -> rainbowSvg(text, d)
+        "glitch" -> glitchSvg(text, d)
         in MOTIONS -> motionSvg(text, animate, d)
         else -> text
     }
@@ -274,5 +438,5 @@ fun animationTag(animate: String, loop: Boolean, duration: Double?, morphTo: Str
                  morphTone2: ColorSpec? = null): String {
     if (animate == "none") return ""
     return "-$animate" + (if (animate == "morph") "-${slug(morphTo ?: "")}${morphColorTag(morphColor, morphTone2)}" else "") +
-        (if ((animate == "draw" || animate == "morph") && loop) "-loop" else "") + (duration?.let { "-${fmtG(it)}s" } ?: "")
+        (if (animate in LOOPABLE && loop) "-loop" else "") + (duration?.let { "-${fmtG(it)}s" } ?: "")
 }

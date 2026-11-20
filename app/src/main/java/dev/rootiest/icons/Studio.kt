@@ -8,6 +8,7 @@ import dev.rootiest.icons.core.EmblemEntry
 import dev.rootiest.icons.core.ExternalName
 import dev.rootiest.icons.core.IconEntry
 import dev.rootiest.icons.core.Index
+import dev.rootiest.icons.core.LOOPABLE
 import dev.rootiest.icons.core.Logo
 import dev.rootiest.icons.core.Parts
 import dev.rootiest.icons.core.Place
@@ -338,7 +339,7 @@ fun commandLine(d: Drawn, c: Choices, morphName: String? = null, morphColor: Col
             morphColor?.let { args += listOf("--morph-color", it.label.removePrefix("#")) }
             morphTone2?.let { args += listOf("--morph-tone2-color", it.label.removePrefix("#")) }
         }
-        if (c.loop && (c.animate == "draw" || c.animate == "morph")) args += "--loop"
+        if (c.loop && c.animate in LOOPABLE) args += "--loop"
         c.duration?.let { args += listOf("--duration", fmtG(it)) }
     }
     if (!svgOnly) c.background?.let { args += listOf("--background", it) }
