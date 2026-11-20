@@ -321,6 +321,33 @@ def main():
         ts, once = ri.play_frames(text)
         play_times.append({"name": rel, "text": key(text), "seconds": ri.play_time(text)[0], "frames": len(ts), "last": ts[-1], "once": once})
 
+    # Chains (render-icon.py chain_svg): steps one after another, once and looping, a chain continued, its steps taken
+    # back out, and badges frozen at their end.
+    step = lambda t: [t, 0.0, ri.play_time(t)[0]]
+    badge = lambda n: read("icons", "color", "animated", f"{n}.svg")
+    chain_sets = [
+        ([step(badge("icon-cycle-square"))], False, None),
+        ([step(badge("icon-ok-to-warn-circle")), step(ri.animate_svg(read("icons", "color", "icon-warn-circle.svg"), "shine", None))], False, "icon-warn-circle --variant color"),
+        ([step(ri.animate_svg(read("icons", "color", "icon-ok-circle.svg"), "morph", None, False, read("icons", "color", "icon-bad-triangle.svg"))),
+          step(ri.animate_svg(read("icons", "color", "icon-bad-triangle.svg"), "morph", 0.8, False, read("icons", "color", "icon-info-square.svg")))], True, "icon-info-square --variant color"),
+        ([step(badge("icon-ok-to-bad-heartbeat")), step(ri.animate_svg(read("icons", "color", "icon-bad.svg"), "pulse", None))], True, "icon-bad --variant color"),
+    ]
+    first = ri.chain_svg(*chain_sets[1])
+    chain_sets.append((ri.chain_steps(first) + [step(ri.animate_svg(read("icons", "color", "icon-warn-circle.svg"), "draw", 0.6))], False, "icon-warn-circle --variant color"))
+    chains = []
+    for steps, lp, rc in chain_sets:
+        c = ri.chain_svg(steps, lp, rc)
+        chains.append({"steps": [{"doc": key(d), "offset": o, "length": ln} for d, o, ln in steps], "loop": lp, "recipe": rc, "want": sha(c),
+                       "back": [f"{sha(d)} {st:g} {ln:g}" for d, st, ln in ri.chain_steps(c)], "ends": ri.end_recipe(c)})
+    frozen = [{"text": key(badge(n)), "want": sha(ri.frozen(badge(n), ri.play_time(badge(n))[0]))}
+              for n in ("icon-ok-to-warn-circle", "icon-cycle-triangle", "icon-info-to-unknown-square")]
+    recipes = [{"o": {j: spec_js(o.get(j)) for j in ("color", "logo", "emblem", "tone2")}, "name": n, "emblem": em, "variant": v, "padded": pd,
+                "want": ri.recipe_args(SimpleNamespace(icon=n, emblem=em, variant=v, padded=pd, color=o.get("color"), logo_color=o.get("logo"),
+                                                       emblem_color=o.get("emblem"), tone2_color=o.get("tone2")))}
+               for n, em, v, pd, o in (("rootiest-home", False, "color", False, {}), ("gitea", True, "auto", False, {"color": ri.color_spec("dev")}),
+                                       ("rootiest:tabler:heart", False, "color", True, {"emblem": ri.color_spec("ff8800"), "tone2": ri.color_spec("fff", hex_only=True)}),
+                                       ("icon-ok-circle", False, "dark", False, {"logo": ri.color_spec("cdd6f4/4c4f69")}))]
+
     # Layouts: one kept, as the CLI's --layout N --format svg.
     icon = read("icons", "color", "rootiest-gitea.svg")
     small = ri.layouts_of(icon)
@@ -392,7 +419,7 @@ def main():
     numbers = [{"x": v, "f3": f"{v:.3f}", "f4": f"{v:.4f}", "g": f"{v:g}", "g4": f"{v:.4g}", "js": ri.js_num(v)} for v in values]
 
     out = {"colors": colors, "cfg": cfg, "recolor": recolor, "mono": mono_cases, "autos": autos, "shades": shades, "built": built, "alone": alone,
-           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "morphColors": morph_colors, "playTimes": play_times, "layouts": layouts, "numbers": numbers,
+           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "morphColors": morph_colors, "playTimes": play_times, "chains": chains, "frozen": frozen, "recipes": recipes, "layouts": layouts, "numbers": numbers,
            "anims": anims, "animTags": anim_tags, "colorSpecs": color_specs}
     path = os.path.join(HERE, "core", "src", "test", "resources", "fixtures.json")
     with open(path, "w") as f:

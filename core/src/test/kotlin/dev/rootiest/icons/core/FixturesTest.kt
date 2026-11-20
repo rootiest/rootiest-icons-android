@@ -148,6 +148,27 @@ class FixturesTest {
     })
 
     @Test
+    fun chains() {
+        val built = cases("chains").map { c ->
+            val steps = c.getValue("steps").jsonArray.map { it.jsonObject }.map {
+                ChainStep(it.text("doc")!!, it.getValue("offset").jsonPrimitive.double, it.getValue("length").jsonPrimitive.double)
+            }
+            c to chainSvg(steps, c.getValue("loop").jsonPrimitive.boolean, c.str("recipe"))
+        }
+        check("chain", built.map { (c, svg) -> c.str("want")!! to sha(svg) })
+        check("chain steps", built.map { (c, svg) ->
+            c.getValue("back").jsonArray.joinToString(",") { it.jsonPrimitive.content } to
+                chainSteps(svg).joinToString(",") { "${sha(it.doc)} ${fmtG(it.offset)} ${fmtG(it.length)}" }
+        })
+        check("chain end", built.map { (c, svg) -> (c.str("ends") ?: "none") to (endRecipe(svg) ?: "none") })
+        check("frozen", cases("frozen").map { c -> val t = c.text("text")!!; c.str("want")!! to sha(frozen(t, playTime(t).seconds)) })
+        check("recipe", cases("recipes").map { c ->
+            c.str("want")!! to recipeArgs(c.str("name")!!, c.getValue("emblem").jsonPrimitive.boolean, c.str("variant")!!,
+                c.getValue("padded").jsonPrimitive.boolean, options(c.getValue("o").jsonObject))
+        })
+    }
+
+    @Test
     fun badgePlayTimes() = check("play times", cases("playTimes").map { c ->
         val text = c.text("text")!!
         "${c.str("name")} ${c.getValue("seconds").jsonPrimitive.double} ${c.getValue("frames").jsonPrimitive.int} ${c.getValue("last").jsonPrimitive.double} ${c.getValue("once").jsonPrimitive.boolean}" to

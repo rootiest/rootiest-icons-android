@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.rootiest.icons.BadgeSubject
+import dev.rootiest.icons.ChainState
 import dev.rootiest.icons.Choices
 import dev.rootiest.icons.Drawn
 import dev.rootiest.icons.EmblemSubject
@@ -68,7 +69,15 @@ import dev.rootiest.icons.core.Colors
 import dev.rootiest.icons.core.ANIMATIONS
 import dev.rootiest.icons.core.FPS
 import dev.rootiest.icons.core.OWN_COLOR
+import dev.rootiest.icons.core.ColorOptions
+import dev.rootiest.icons.core.animationTag
+import dev.rootiest.icons.core.badgeEndIcon
+import dev.rootiest.icons.core.chainedSvg
 import dev.rootiest.icons.core.colorSpec
+import dev.rootiest.icons.core.frozen
+import dev.rootiest.icons.core.oneLayout
+import dev.rootiest.icons.core.playTime
+import dev.rootiest.icons.core.recipeArgs
 import dev.rootiest.icons.core.morphColors
 import dev.rootiest.icons.core.defaultDuration
 import dev.rootiest.icons.core.fmtG
@@ -94,6 +103,10 @@ private fun parseColor(hex: String) = runCatching { Color(android.graphics.Color
 internal data class Moving(
     val animation: Animation, val targets: List<String>, val failed: String? = null,
     val ownTarget: String? = null, val target: Drawn? = null, // the morph's target, drawn
+    // the chain it continues (an animated badge is one by itself); whether its morph ends on the target; the colors
+    // the target and the still it starts from have; the still it ends on, as the file names it
+    val chain: ChainState? = null, val morphEnds: Boolean = false, val targetOpts: ColorOptions? = null,
+    val baseOpts: ColorOptions? = null, val recipe: String? = null,
 )
 
 @Composable
@@ -104,9 +117,22 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     // another set by name, or your emblem file; a published icon is its file unless your logo or another placement
     // has it built here (Studio.draw decides, as for this icon). In auto, a published target needs its auto/ file.
     val subject = s.subject
-    // an animated badge plays its own animation, as published
-    if (subject is BadgeSubject) return Moving(Animation(published = true), emptyList())
-    val whole = subject is IconSubject || subject is OwnLogoSubject || c.whole
+    // An animated badge starts a chain by itself: it continues from the status icon a heartbeat or a shine ends on, a
+    // change or a cycle frozen at its end (render-icon.py chain_base).
+    val badgeChain by produceState<ChainState?>(null, subject, c.padded) {
+        value = null
+        if (subject !is BadgeSubject) return@produceState
+        val name = subject.entry.name
+        val pad = if (c.padded) "padded/" else ""
+        value = runCatching {
+            val svg = vm.repo.svg("color/animated/$pad$name.svg")
+            val still = badgeEndIcon(name)?.let { vm.repo.svg("color/$pad$it.svg") } ?: frozen(svg, playTime(svg).seconds)
+            val input = listOf(name) + if (c.padded) listOf("--padded") else emptyList()
+            ChainState(svg, stemOf(name, false, "color", c.padded, ColorOptions()), still, null, input.joinToString(" "), input, emptyList(), listOf(name))
+        }.getOrNull()
+    }
+    val chain = c.chain ?: badgeChain
+    val whole = subject is IconSubject || subject is OwnLogoSubject || subject is BadgeSubject || c.whole
     val logo = vm.ownLogo.logo
     val ownEmblem = vm.ownEmblem.file
     val rebuilt = (whole && (c.mine || subject is OwnLogoSubject) && logo != null) || (whole && c.placedElsewhere)
@@ -123,7 +149,9 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     // over them (render-icon.py morph_colors); with none, the target takes its own brand color, as render-icon.py
     // resolves each. A second tone only counts for a target that has one.
     val shown = d?.shown?.takeIf { c.variant == "color" } ?: c.colors
-    val colors = morphColors(shown, !whole, c.morphColor, c.morphTone2)
+    // continuing a chain, the colors the still it starts from has
+    val baseColors = if (chain != null) chain.opts ?: ColorOptions() else shown
+    val colors = morphColors(baseColors, !whole, c.morphColor, c.morphTone2)
     val drawnTarget by produceState<Result<Drawn>?>(null, c.morphTo, c.morphKind, c.animate, c.variant, c.padded, colors, c.mine,
         c.whole, c.preset, c.scale, c.x, c.y, logo, ownEmblem) {
         value = null
@@ -141,10 +169,34 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     }
     val target = drawnTarget?.getOrNull()
     val looping = c.animate == "draw" || c.animate == "morph"
-    val name = target?.args?.firstOrNull()
-    return Moving(Animation(c.animate, c.loop && looping, c.duration, name.takeIf { c.animate == "morph" }, target?.text,
-        c.morphColor.takeIf { target?.parts?.emblem == true }, c.morphTone2.takeIf { target?.parts?.tone2 == true }), targets,
-        drawnTarget?.exceptionOrNull()?.let { "Could not draw ${c.morphTo}: ${it.message ?: it.javaClass.simpleName}" }, ownTarget, target)
+    val name = target?.args?.firstOrNull()?.takeIf { c.animate == "morph" }
+    val mc = c.morphColor.takeIf { target?.parts?.emblem == true }
+    val mt = c.morphTone2.takeIf { target?.parts?.tone2 == true }
+    // the still the render ends on, as render-icon.py names it in the file: a morph played once (in a chain, always:
+    // Loop loops the chain) ends on its target as built, anything else on what it animates
+    val morphEnds = c.animate == "morph" && (chain != null || !c.loop)
+    val baseOpts = if (chain != null) chain.opts else d?.shown
+    val targetOpts = morphColors(baseOpts ?: ColorOptions(), !whole, mc, mt).takeIf { it.any }
+    val extra = d?.args?.let { it.drop(if (it.getOrNull(1) == "--emblem") 2 else 1) } ?: emptyList()
+    val recipe = when {
+        morphEnds && name != null -> recipeArgs(name, !whole, c.variant, c.padded && whole, targetOpts, extra)
+        chain != null -> chain.recipe
+        d != null -> recipeArgs(d.args[0], d.isEmblem, c.variant, c.padded && !d.isEmblem, d.shown, extra)
+        else -> null
+    }
+    val animation = remember(c, chain, target, recipe, name, mc, mt) {
+        Animation(c.animate, if (chain != null) c.loop && c.animate != "none" else c.loop && looping, c.duration, name, target?.text, mc, mt,
+            recipe = recipe.takeIf { c.animate != "none" },
+            build = chain?.let { ch ->
+                { lay: String ->
+                    if (c.animate == "none") oneLayout(ch.svg, lay)
+                    else chainedSvg(ch.svg, ch.still, c.animate, c.duration, target?.text, lay, c.loop, recipe)
+                }
+            })
+    }
+    return Moving(animation, targets,
+        drawnTarget?.exceptionOrNull()?.let { "Could not draw ${c.morphTo}: ${it.message ?: it.javaClass.simpleName}" }, ownTarget, target,
+        chain, morphEnds, targetOpts, baseOpts, recipe)
 }
 
 // Everything render-rootiest-icons makes, made here: the colors, the layouts, any sizes, PNG, WebP, ICO, SVG and GIF,
@@ -167,7 +219,8 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
     val looping = c.animate == "draw" || c.animate == "morph"
     var results by remember(d.text, c) { mutableStateOf<List<Rendered>?>(null) }
     var busy by remember { mutableStateOf(false) }
-    val stem = stemOf(d.stemBase, d.isEmblem, c.variant, c.padded && !d.isEmblem, d.shown ?: dev.rootiest.icons.core.ColorOptions())
+    val chain = moving.chain
+    val stem = chain?.name ?: stemOf(d.stemBase, d.isEmblem, c.variant, c.padded && !d.isEmblem, d.shown ?: dev.rootiest.icons.core.ColorOptions())
     val layouts = if (small.isEmpty()) listOf("auto") else c.layouts
     val files = plannedFiles(stem, layouts, c.sizes, formats, animation.tag)
     val problem = when {
@@ -237,9 +290,17 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                     Text("WebP and GIF are animated, $FPS frames a second; PNG and ICO stay still.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
                 }
             }
-            if (s.subject is BadgeSubject) Text("It plays as published, in its own timing: the WebP and GIF animated, the PNG and ICO its first frame.",
+            if (s.subject is BadgeSubject) Text("It plays as published, in its own timing: the WebP and GIF animated, the PNG and ICO its " +
+                "first frame. An animation chosen below plays after it, from the state it ends on.",
                 style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
-            else Field("Animation") {
+            // continuing a chain: its steps so far, and Undo
+            if (chain != null && (s.subject !is BadgeSubject || c.chainBack.isNotEmpty())) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Continuing: ${chain.words.joinToString(", then ")}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+                    TextButton(onClick = { change(c.copy(chain = c.chainBack.lastOrNull(), chainBack = c.chainBack.dropLast(1))) }) { Text("Undo") }
+                }
+            }
+            Field("Animation") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ANIMATIONS.forEach { a ->
@@ -303,7 +364,8 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (looping) {
+                            // continuing a chain, Loop loops it whole, whatever the animation
+                            if (looping || chain != null) {
                                 Switch(checked = c.loop, onCheckedChange = { change(c.copy(loop = it)) })
                                 Text("Loop", Modifier.padding(end = 8.dp))
                             }
@@ -356,6 +418,29 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                     }
                 },
             ) { Text(if (busy) "Rendering…" else if (files.size > 1) "Render ${files.size} files" else "Render") }
+            // Then another animation: this render (its SVG, the still it ends on) becomes what the next one continues.
+            OutlinedButton(
+                enabled = problem == null && !busy && c.animate != "none",
+                onClick = {
+                    val target = moving.target
+                    val mc = animation.morphColor
+                    val mt = animation.morphTone2
+                    val svg = if (chain != null) chainedSvg(chain.svg, chain.still, c.animate, c.duration, target?.text, "auto", false, moving.recipe)
+                        else animation.svg(d.text, "auto", target?.text)
+                    val name = if (chain != null) "${chain.name}-then" + animationTag(c.animate, false, c.duration, animation.morphTo, mc, mt)
+                        else stem + animation.tag
+                    val words = (if (c.animate == "morph") "morph into ${animation.morphTo?.removePrefix("rootiest-")}" else c.animate) +
+                        if (chain == null && c.loop && looping) " (looping)" else ""
+                    val next = ChainState(
+                        svg, name, if (moving.morphEnds && target != null) target.text else chain?.still ?: d.text,
+                        if (moving.morphEnds) moving.targetOpts else moving.baseOpts, moving.recipe ?: "",
+                        listOf("render/$name.svg"), (chain?.runs ?: emptyList()) + runCommand(d, c, layouts, animation, chain, svgOnlyRun = true),
+                        (chain?.words ?: emptyList()) + words,
+                    )
+                    change(c.copy(chain = next, chainBack = c.chainBack + listOf(c.chain), animate = "none", loop = false, duration = null,
+                        morphTo = null, morphColor = null, morphTone2 = null))
+                },
+            ) { Text("Then another animation…") }
         }
     }
     results?.let { made ->
@@ -399,7 +484,7 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
         }
     }
     Note("The same with the command line tool:", Modifier)
-    val command = commandLine(d, c.copy(layouts = layouts), animation.morphTo, animation.morphColor, animation.morphTone2)
+    val command = ((chain?.runs ?: emptyList()) + runCommand(d, c, layouts, animation, chain, svgOnlyRun = false)).joinToString(" &&\n")
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(palette.Mantle).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(command, Modifier.weight(1f).padding(vertical = 10.dp), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         IconButton(onClick = {
@@ -432,6 +517,32 @@ private fun Chips(values: List<String>, selected: List<String>, names: Map<Strin
             )
         }
     }
+}
+
+// The command for a render (chain: continuing that file); svgOnlyRun, the run that writes its SVG alone, for the next
+// one to continue.
+private fun runCommand(d: Drawn, c: Choices, layouts: List<String>, animation: Animation, chain: ChainState?, svgOnlyRun: Boolean): String {
+    if (chain == null) {
+        val cc = if (svgOnlyRun) c.copy(layouts = listOf("auto"), formats = listOf("svg"), background = null) else c.copy(layouts = layouts)
+        return commandLine(d, cc, animation.morphTo, animation.morphColor, animation.morphTone2)
+    }
+    val args = ArrayList(chain.input)
+    if (svgOnlyRun) args += listOf("--format", "svg")
+    else {
+        if (layouts != listOf("auto")) args += listOf("--layout", layouts.joinToString(","))
+        args += listOf("--size", c.sizes.joinToString(","))
+        if (c.formats != listOf("png")) args += listOf("--format", c.formats.joinToString(","))
+    }
+    if (c.animate != "none") {
+        args += listOf("--animate", c.animate)
+        animation.morphTo?.let { args += listOf("--morph-to", it) }
+        animation.morphColor?.let { args += listOf("--morph-color", it.label.removePrefix("#")) }
+        animation.morphTone2?.let { args += listOf("--morph-tone2-color", it.label.removePrefix("#")) }
+        if (c.loop && !svgOnlyRun) args += "--loop"
+        c.duration?.let { args += listOf("--duration", fmtG(it)) }
+    }
+    if (!svgOnlyRun) c.background?.let { args += listOf("--background", it) }
+    return (listOf("render-rootiest-icons") + args).joinToString(" ") { if (Regex("^[\\w@%+=:,./-]+$").matches(it)) it else "'" + it.replace("'", "'\"'\"'") + "'" }
 }
 
 // One part's color: the default, a category, a status state, a brand's own, or any hex color; in the auto variant

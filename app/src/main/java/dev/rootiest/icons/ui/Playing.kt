@@ -108,7 +108,7 @@ internal fun AnimatedSvgImage(svg: String, animation: Animation, size: Dp, descr
         // a choice changed while drawing: this is cancelled, and the frames still to draw with it
         value = try {
             withContext(Dispatchers.Default) {
-                val moving = animateSvg(svg, animation.animate, animation.duration, animation.loop, animation.target)
+                val moving = animation.svg(svg, "auto", animation.target)
                 animatedPreview(moving, animation, "auto", size.value.toInt(), layoutsOf(svg), light, px)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
