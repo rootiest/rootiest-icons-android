@@ -83,6 +83,8 @@ data class Choices(
     val duration: Double? = null, // --duration in seconds; null: the animation's default
     val morphTo: String? = null, // the morph's target: a published icon's or emblem's name, set:icon, or your file's
     val morphKind: String = "published", // what morphTo names: published, iconify or own
+    val morphColor: ColorSpec? = null, // --morph-color: the target's emblem color (OWN_COLOR: its own); null: the icon's
+    val morphTone2: ColorSpec? = null, // --morph-tone2-color: its second tone's (hex)
 ) {
     val placedElsewhere get() = preset != "rootiest" || scale != null || x != 0.0 || y != 0.0
 }
@@ -271,7 +273,8 @@ class Studio(private val repo: Repo, val index: Index) {
 
 // The whole command for a render: the name and placement (Drawn.args), then the choices.
 // morphName: the morph's target as --morph-to names it (Moving's), when there is one.
-fun commandLine(d: Drawn, c: Choices, morphName: String? = null): String {
+// morphColor, morphTone2: its colors as they apply (Animation's).
+fun commandLine(d: Drawn, c: Choices, morphName: String? = null, morphColor: ColorSpec? = null, morphTone2: ColorSpec? = null): String {
     val args = ArrayList(d.args)
     if (c.variant != "color") args += listOf("--variant", c.variant)
     if (c.padded && !d.isEmblem) args += "--padded"
@@ -292,6 +295,10 @@ fun commandLine(d: Drawn, c: Choices, morphName: String? = null): String {
     if (c.animate != "none") {
         args += listOf("--animate", c.animate)
         if (c.animate == "morph") morphName?.let { args += listOf("--morph-to", it) }
+        if (c.animate == "morph" && morphName != null) {
+            morphColor?.let { args += listOf("--morph-color", it.label.removePrefix("#")) }
+            morphTone2?.let { args += listOf("--morph-tone2-color", it.label.removePrefix("#")) }
+        }
         if (c.loop && (c.animate == "draw" || c.animate == "morph")) args += "--loop"
         c.duration?.let { args += listOf("--duration", fmtG(it)) }
     }

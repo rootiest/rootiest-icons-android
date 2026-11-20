@@ -262,10 +262,17 @@ fun animateSvg(text: String, animate: String, duration: Double? = null, loop: Bo
     }
 }
 
-// render-icon.py animation_tag(): -draw, -draw-loop, -draw-loop-6s, -heartbeat, -heartbeat-1.2s, -morph-<target>[-loop];
-// "" when still.
-fun animationTag(animate: String, loop: Boolean, duration: Double?, morphTo: String? = null): String {
+// render-icon.py morph_color_tag(): the morph target's colors after its name, -bad, -own, -ff8800-tone2-ffffff.
+fun morphColorTag(color: ColorSpec?, tone2: ColorSpec?): String {
+    fun label(s: ColorSpec) = s.label.removePrefix("#").replace("/", "-")
+    return (color?.let { "-${label(it)}" } ?: "") + (tone2?.let { "-tone2-${label(it)}" } ?: "")
+}
+
+// render-icon.py animation_tag(): -draw, -draw-loop, -draw-loop-6s, -heartbeat, -heartbeat-1.2s,
+// -morph-<target>[-<its colors>][-loop]; "" when still.
+fun animationTag(animate: String, loop: Boolean, duration: Double?, morphTo: String? = null, morphColor: ColorSpec? = null,
+                 morphTone2: ColorSpec? = null): String {
     if (animate == "none") return ""
-    return "-$animate" + (if (animate == "morph") "-${slug(morphTo ?: "")}" else "") +
+    return "-$animate" + (if (animate == "morph") "-${slug(morphTo ?: "")}${morphColorTag(morphColor, morphTone2)}" else "") +
         (if ((animate == "draw" || animate == "morph") && loop) "-loop" else "") + (duration?.let { "-${fmtG(it)}s" } ?: "")
 }

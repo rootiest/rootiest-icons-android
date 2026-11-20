@@ -144,7 +144,13 @@ class FixturesTest {
             plannedFiles(stem, c.getValue("layouts").jsonArray.map { it.jsonPrimitive.content },
                 c.getValue("sizes").jsonArray.map { it.jsonPrimitive.int }, c.getValue("formats").jsonArray.map { it.jsonPrimitive.content },
                 animationTag(c.str("animate")!!, c.getValue("loop").jsonPrimitive.boolean, c.getValue("duration").jsonPrimitive.doubleOrNull,
-                    c.str("morphTo"))).joinToString(",")
+                    c.str("morphTo"), spec(c["morphColor"]), spec(c["morphTone2"]))).joinToString(",")
+    })
+
+    @Test
+    fun morphTargetColors() = check("morph colors", cases("morphColors").map { c ->
+        options(c.getValue("want").jsonObject).toString() to
+            morphColors(options(c.getValue("o").jsonObject), c.getValue("emblem").jsonPrimitive.boolean, spec(c["color"]), spec(c["tone2"])).toString()
     })
 
     @Test
