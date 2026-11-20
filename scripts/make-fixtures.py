@@ -282,7 +282,8 @@ def main():
                 sizes, formats = [[256], [16, 32, 48], [1024, 64]][i % 3], [["png"], ["png", "webp", "ico", "svg"], ["svg", "ico"]][len(o) % 3]
                 animate, loop, duration = [("none", False, None), ("draw", False, None), ("draw", True, None), ("draw", True, 6.5),
                                            ("heartbeat", False, None), ("heartbeat", False, 1.25), ("morph", True, 3.5),
-                                           ("morph", False, None)][(i + len(o) + len(variant)) % 8]
+                                           ("morph", False, None), ("tada", False, None), ("tada", True, 2.0),
+                                           ("fill", True, None), ("bounce", False, None), ("glitch", False, 1.5)][(i + len(o) + len(variant)) % 13]
                 morph_to = "rootiest:tabler:heart" if animate == "morph" else None
                 morph_color, morph_tone2 = [(None, None), (("own", "own"), None), (ri.color_spec("bad"), None),
                                             (ri.color_spec("ff8800"), ri.color_spec("fff", hex_only=True)),
@@ -331,6 +332,9 @@ def main():
         ([step(ri.animate_svg(read("icons", "color", "icon-ok-circle.svg"), "morph", None, False, read("icons", "color", "icon-bad-triangle.svg"))),
           step(ri.animate_svg(read("icons", "color", "icon-bad-triangle.svg"), "morph", 0.8, False, read("icons", "color", "icon-info-square.svg")))], True, "icon-info-square --variant color"),
         ([step(badge("icon-ok-to-bad-heartbeat")), step(ri.animate_svg(read("icons", "color", "icon-bad.svg"), "pulse", None))], True, "icon-bad --variant color"),
+        ([step(ri.animate_svg(read("icons", "color", "rootiest-gitea.svg"), "fill", None, False)),
+          step(ri.animate_svg(read("icons", "color", "rootiest-gitea.svg"), "glitch", None)),
+          step(ri.animate_svg(read("icons", "color", "rootiest-gitea.svg"), "rainbow", 2.0))], True, "rootiest-gitea --variant color"),
     ]
     first = ri.chain_svg(*chain_sets[1])
     chain_sets.append((ri.chain_steps(first) + [step(ri.animate_svg(read("icons", "color", "icon-warn-circle.svg"), "draw", 0.6))], False, "icon-warn-circle --variant color"))
@@ -366,8 +370,10 @@ def main():
         built_emblems.append(emblem(tb, ri.measured(vb, tb), "an emblem for the animations")[0])
     timings = [("draw", None, False), ("heartbeat", None, False), ("draw", 4.0, True), ("heartbeat", 0.75, False),
                ("pulse", None, False), ("spin", 3.5, False), ("shake", None, False), ("pop", 0.25, False),
-               ("shine", None, False), ("draw", 0.2, False), ("draw", None, True), ("pop", None, False),
-               ("shine", 1.75, False)]
+               ("shine", None, False), ("bounce", None, False), ("float", 2.5, False), ("flip", None, False),
+               ("blink", 1.0, False), ("tada", None, False), ("tada", None, True), ("ping", None, False),
+               ("fill", None, False), ("fill", 2.8, True), ("rainbow", None, False), ("glitch", None, False),
+               ("draw", 0.2, False), ("draw", None, True), ("pop", None, False), ("shine", 1.75, False)]
     sources = [read("icons", v, f"{n}.svg") for v in ("color", "dark") for n in ("rootiest-gitea", "rootiest-status", "logo")] + \
               [read("icons", "color", "icon-ok-circle.svg"), single_layout(read("icons", "color", "rootiest-vault.svg"), 24)] + \
               [read("icons", "emblems", f"{n}.svg") for n in ("gitea", "status", "immich-color", "home")] + \
@@ -381,9 +387,9 @@ def main():
         '<g class="ColorScheme-Emblem2"><path d="M3 3"/></g><g class="a ColorScheme-Emblem"><rect/></g></svg>',
         '<svg viewBox="0 0 1 1"><defs><mask id="m"/></defs><circle r="1"/></svg>', "no svg here"]
     anims = [{"text": key(t), "animate": an, "duration": d, "loop": lp, "want": sha(ri.animate_svg(t, an, d, lp))}
-             for t in sources for an, d, lp in timings[:9]] + \
+             for t in sources for an, d, lp in timings[:20]] + \
             [{"text": key(t), "animate": an, "duration": d, "loop": lp, "want": sha(ri.animate_svg(t, an, d, lp))}
-             for t in sources[:3] for an, d, lp in timings[9:]]
+             for t in sources[:3] for an, d, lp in timings[20:]]
     anim_tags = [{"animate": an, "loop": lp, "duration": d, "morphTo": "rootiest:tabler:heart" if an == "morph" else None,
                   "want": ri.animation_tag(SimpleNamespace(animate=an, loop=lp, duration=d,
                                                            morph_to="rootiest:tabler:heart" if an == "morph" else None)),
