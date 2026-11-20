@@ -2,6 +2,7 @@ package dev.rootiest.icons.render
 
 import android.graphics.Bitmap
 import android.os.Build
+import dev.rootiest.icons.core.GifEncoder
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -99,113 +100,15 @@ class WebpSink(private val delayMs: Int, private val once: Boolean, private val 
     }
 }
 
-// An animated GIF: each frame in a palette of its own (up to 255 colors, from its most common ones at 5 bits a
-// channel), fully transparent pixels in the 256th; a GIF has no partial transparency.
-class GifSink(private val delayCs: Int, private val once: Boolean) : FrameSink {
-    private val out = ByteArrayOutputStream()
-    private var started = false
-
-    private fun u16(n: Int) {
-        out.write(n and 0xff)
-        out.write(n shr 8 and 0xff)
-    }
-
-    // 5 bits a channel, as rrrrrgggggbbbbb (infix shl and or bind left to right, hence the parentheses)
-    private fun key(c: Int) = ((c shr 19 and 0x1f) shl 10) or ((c shr 11 and 0x1f) shl 5) or (c shr 3 and 0x1f)
-
-    private fun rgb(k: Int) = intArrayOf((k shr 10 and 0x1f) * 255 / 31, (k shr 5 and 0x1f) * 255 / 31, (k and 0x1f) * 255 / 31)
+// An animated GIF, by :core's GifEncoder: each frame only the box that changed, losslessly.
+class GifSink(delayCs: Int, once: Boolean) : FrameSink {
+    private val gif = GifEncoder(delayCs, once)
 
     override fun frame(f: Bitmap, n: Int) {
-        val w = f.width
-        val h = f.height
-        if (!started) {
-            started = true
-            out.write("GIF89a".toByteArray())
-            u16(w); u16(h)
-            out.write(0); out.write(0); out.write(0)  // no global color table
-            if (!once) {  // NETSCAPE2.0: loop forever
-                out.write(byteArrayOf(0x21, 0xff.toByte(), 11) + "NETSCAPE2.0".toByteArray() + byteArrayOf(3, 1, 0, 0, 0))
-            }
-        }
-        val pixels = IntArray(w * h)
-        f.getPixels(pixels, 0, w, 0, 0, w, h)
-        val counts = HashMap<Int, Int>()
-        for (c in pixels) if ((c ushr 24) >= 128) {
-            val k = key(c)
-            counts[k] = (counts[k] ?: 0) + 1
-        }
-        val pal = counts.entries.sortedByDescending { it.value }.take(255).map { rgb(it.key) }
-        val nearest = HashMap<Int, Int>()
-        val index = ByteArray(w * h)
-        for (i in pixels.indices) {
-            val c = pixels[i]
-            if ((c ushr 24) < 128) { index[i] = 255.toByte(); continue }
-            val k = key(c)
-            index[i] = nearest.getOrPut(k) {
-                val (r, g, b) = rgb(k)
-                pal.indices.minByOrNull { j -> val q = pal[j]; (q[0] - r) * (q[0] - r) + (q[1] - g) * (q[1] - g) + (q[2] - b) * (q[2] - b) } ?: 0
-            }.toByte()
-        }
-        // graphic control: restore to background after, transparent index 255, the delay
-        out.write(byteArrayOf(0x21, 0xf9.toByte(), 4, 0x09)); u16(delayCs * n); out.write(255); out.write(0)
-        // image descriptor with a local color table of 256
-        out.write(0x2c); u16(0); u16(0); u16(w); u16(h); out.write(0x87)
-        for (j in 0 until 256) {
-            val q = pal.getOrNull(j) ?: intArrayOf(0, 0, 0)
-            out.write(q[0]); out.write(q[1]); out.write(q[2])
-        }
-        out.write(8)
-        val data = lzw(index)
-        var p = 0
-        while (p < data.size) {
-            val k = minOf(255, data.size - p)
-            out.write(k); out.write(data, p, k)
-            p += k
-        }
-        out.write(0)
+        val pixels = IntArray(f.width * f.height)
+        f.getPixels(pixels, 0, f.width, 0, 0, f.width, f.height)
+        gif.frame(pixels, f.width, f.height, n)
     }
 
-    override fun bytes(): ByteArray = out.toByteArray() + byteArrayOf(0x3b)
-}
-
-// GIF's LZW for 8-bit indexes: codes from 9 to 12 bits, a clear code when the table is full.
-private fun lzw(index: ByteArray): ByteArray {
-    val clear = 256
-    val eoi = 257
-    val out = ByteArrayOutputStream()
-    var bits = 0L
-    var nbits = 0
-    var size = 9
-    fun emit(code: Int) {
-        bits = bits or (code.toLong() shl nbits)
-        nbits += size
-        while (nbits >= 8) { out.write((bits and 0xff).toInt()); bits = bits ushr 8; nbits -= 8 }
-    }
-    val table = HashMap<Long, Int>()
-    var next = 258
-    emit(clear)
-    var prefix = -1
-    for (b in index) {
-        val k = b.toInt() and 0xff
-        if (prefix < 0) { prefix = k; continue }
-        val key = (prefix.toLong() shl 8) or k.toLong()
-        val found = table[key]
-        if (found != null) { prefix = found; continue }
-        emit(prefix)
-        // widen after a code once the next entry needs it, before adding it, as decoders read
-        if (next >= (1 shl size) && size < 12) size++
-        if (next < 4096) table[key] = next++
-        else {
-            emit(clear)
-            table.clear()
-            next = 258
-            size = 9
-        }
-        prefix = k
-    }
-    if (prefix >= 0) emit(prefix)
-    if (next >= (1 shl size) && size < 12) size++
-    emit(eoi)
-    if (nbits > 0) out.write((bits and 0xff).toInt())
-    return out.toByteArray()
+    override fun bytes(): ByteArray = gif.bytes()
 }
