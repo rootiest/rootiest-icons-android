@@ -313,6 +313,14 @@ def main():
                                          "color": spec_js(color), "tone2": spec_js(tone2),
                                          "want": {j: spec_js(getattr(b, k)) for j, k in keys}})
 
+    # The animated badges' play times and frame moments (render-icon.py play_frames): one of each kind.
+    play_times = []
+    for rel in ("icon-cycle-circle", "icon-ok-to-warn-heartbeat", "icon-cycle-heartbeat", "icon-ok-shine", "icon-warn-heartbeat",
+                "icon-ok-to-bad-square", "padded/icon-cycle-triangle"):
+        text = read("icons", "color", "animated", *f"{rel}.svg".split("/"))
+        ts, once = ri.play_frames(text)
+        play_times.append({"name": rel, "text": key(text), "seconds": ri.play_time(text)[0], "frames": len(ts), "last": ts[-1], "once": once})
+
     # Layouts: one kept, as the CLI's --layout N --format svg.
     icon = read("icons", "color", "rootiest-gitea.svg")
     small = ri.layouts_of(icon)
@@ -384,7 +392,7 @@ def main():
     numbers = [{"x": v, "f3": f"{v:.3f}", "f4": f"{v:.4f}", "g": f"{v:g}", "g4": f"{v:.4g}", "js": ri.js_num(v)} for v in values]
 
     out = {"colors": colors, "cfg": cfg, "recolor": recolor, "mono": mono_cases, "autos": autos, "shades": shades, "built": built, "alone": alone,
-           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "morphColors": morph_colors, "layouts": layouts, "numbers": numbers,
+           "own": own, "texts": texts, "icondata": icondata, "plans": plans, "morphColors": morph_colors, "playTimes": play_times, "layouts": layouts, "numbers": numbers,
            "anims": anims, "animTags": anim_tags, "colorSpecs": color_specs}
     path = os.path.join(HERE, "core", "src", "test", "resources", "fixtures.json")
     with open(path, "w") as f:

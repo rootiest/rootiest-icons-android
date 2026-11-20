@@ -51,6 +51,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import dev.rootiest.icons.BadgeSubject
 import dev.rootiest.icons.Choices
 import dev.rootiest.icons.Drawn
 import dev.rootiest.icons.EmblemSubject
@@ -103,6 +104,8 @@ internal fun rememberMoving(vm: IconsViewModel, s: Source, c: Choices, d: Drawn?
     // another set by name, or your emblem file; a published icon is its file unless your logo or another placement
     // has it built here (Studio.draw decides, as for this icon). In auto, a published target needs its auto/ file.
     val subject = s.subject
+    // an animated badge plays its own animation, as published
+    if (subject is BadgeSubject) return Moving(Animation(published = true), emptyList())
     val whole = subject is IconSubject || subject is OwnLogoSubject || c.whole
     val logo = vm.ownLogo.logo
     val ownEmblem = vm.ownEmblem.file
@@ -188,7 +191,8 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
             // one color for dark backgrounds and one for light ones).
             val p = d.parts
             val auto = c.variant == "auto"
-            if (c.variant != "color" && !auto) Text("Colors apply to the color and auto variants.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+            if (s.subject is BadgeSubject) Text("An animated badge keeps its own colors: they are part of its animation.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+            else if (c.variant != "color" && !auto) Text("Colors apply to the color and auto variants.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
             else if (!(p.logo || p.emblem || p.tone2)) Text(if (d.isEmblem) "This emblem keeps its own colors." else "Nothing here takes another color.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
             else {
                 val default = if (d.brandDefault) "Default (brand)" else if (d.built || s.brand != null) "Default" else "As published"
@@ -233,7 +237,9 @@ internal fun RenderPanel(vm: IconsViewModel, s: Source, d: Drawn, c: Choices, mo
                     Text("WebP and GIF are animated, $FPS frames a second; PNG and ICO stay still.", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
                 }
             }
-            Field("Animation") {
+            if (s.subject is BadgeSubject) Text("It plays as published, in its own timing: the WebP and GIF animated, the PNG and ICO its first frame.",
+                style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+            else Field("Animation") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ANIMATIONS.forEach { a ->
