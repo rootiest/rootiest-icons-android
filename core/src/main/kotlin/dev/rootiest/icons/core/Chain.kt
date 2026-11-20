@@ -155,19 +155,22 @@ private fun retimedSmil(attrs: String, offset: Double, length: Double, start: Do
     val splines = (getAttr(attrs, "keySplines") ?: "").split(";").map { it.trim() }.filter { it.isNotEmpty() }
     val count = iterations(getAttr(attrs, "repeatCount"))
     val end = if (count != null) dur * count else Double.POSITIVE_INFINITY
+    // key times are written to 6 digits (a chain's, continued), so a key that close to the slot's edge is on it
+    val tol = 1e-6 * dur + 1e-9
     val pts = ArrayList<Triple<Double, String, String>>()
     var i = 0
-    while (i * dur <= offset + length + 1e-9 && i * dur < end) {
+    while (i * dur <= offset + length + tol && i * dur < end) {
         keys.forEachIndexed { j, k ->
-            val t = i * dur + k * dur
-            if (offset - 1e-9 <= t && t <= offset + length + 1e-9 && t <= end + 1e-9) {
+            var t = i * dur + k * dur
+            if (offset - tol <= t && t <= offset + length + tol && t <= end + tol) {
+                t = if (abs(t - offset) <= tol) offset else if (abs(t - offset - length) <= tol) offset + length else t
                 pts += Triple(t, values[j], if (spline && j < splines.size) splines[j] else "0 0 1 1")
             }
         }
         i++
     }
-    if (pts.isEmpty() || abs(pts[0].first - offset) > 1e-9 || (abs(pts.last().first - offset - length) > 1e-9 && offset + length < end)) return null
-    if (pts.last().first < offset + length - 1e-9) pts += Triple(offset + length, pts.last().second, "0 0 1 1")
+    if (pts.isEmpty() || pts[0].first != offset || (pts.last().first != offset + length && offset + length < end - tol)) return null
+    if (pts.last().first < offset + length) pts += Triple(offset + length, pts.last().second, "0 0 1 1")
     val out = pts.map { Triple((start + it.first - offset) / total, it.second, it.third) }.toMutableList()
     if (start > 0) out.add(0, Triple(0.0, out[0].second, "0 0 1 1"))
     if (start + length < total) {
