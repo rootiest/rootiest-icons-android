@@ -89,7 +89,8 @@ private fun quick(x: Double): String {
     return "$sign$whole." + frac.toString().padStart(4, '0').trimEnd('0')
 }
 
-private fun mixed(v0: String, v1: String, f: Double): String {
+// precise: numbers as the command line writes them (fmtG), for text that is compared with it (a chain's keyframes).
+private fun mixed(v0: String, v1: String, f: Double, precise: Boolean = false): String {
     if (v0.length == 7 && v1.length == 7 && HEX.matches(v0) && HEX.matches(v1)) {
         return "#" + (1..5 step 2).joinToString("") { i ->
             val a = v0.substring(i, i + 2).toInt(16)
@@ -103,20 +104,21 @@ private fun mixed(v0: String, v1: String, f: Double): String {
         val out = StringBuilder(v0.length + 16)
         for (i in n0.values.indices) {
             val a = n0.values[i]
-            out.append(n0.pieces[i]).append(quick(a + (n1.values[i] - a) * f))
+            val x = a + (n1.values[i] - a) * f
+            out.append(n0.pieces[i]).append(if (precise) fmtG(x) else quick(x))
         }
         return out.append(n0.pieces.last()).toString()
     }
     return if (f < 0.5) v0 else v1
 }
 
-private class Rule(val selectors: List<String>, val decls: Map<String, String>)
+internal class Rule(val selectors: List<String>, val decls: Map<String, String>)
 
 private fun decls(text: String) = text.split(";").filter { ":" in it }.associate { it.substringBefore(":").trim() to it.substringAfter(":").trim() }
 
 // The stylesheet's plain rules and its keyframes. @media blocks are left out, but for light the light-mode block's
 // rules are read in their place, over the rules before them, as a browser in light mode reads them.
-private fun stylesheet(css: String, light: Boolean = false): Pair<List<Rule>, Map<String, List<Pair<Double, Map<String, String>>>>> {
+internal fun stylesheet(css: String, light: Boolean = false): Pair<List<Rule>, Map<String, List<Pair<Double, Map<String, String>>>>> {
     val rules = ArrayList<Rule>()
     val frames = HashMap<String, List<Pair<Double, Map<String, String>>>>()
     var i = 0
@@ -145,7 +147,7 @@ private fun stylesheet(css: String, light: Boolean = false): Pair<List<Rule>, Ma
     return rules to frames
 }
 
-private fun splitTop(value: String): List<String> {
+internal fun splitTop(value: String): List<String> {
     val out = ArrayList<String>()
     var depth = 0
     val cur = StringBuilder()
@@ -163,7 +165,7 @@ private fun splitTop(value: String): List<String> {
 // {selector: {property: value}} of a stylesheet's animations at t seconds, and its plain rules without animations.
 private val sheets = Memo<String, Pair<List<Rule>, Map<String, List<Pair<Double, Map<String, String>>>>>>(8)
 
-private fun animatedValues(css: String, t: Double, light: Boolean): Pair<Map<String, Map<String, String>>, String> {
+internal fun animatedValues(css: String, t: Double, light: Boolean, precise: Boolean = false): Pair<Map<String, Map<String, String>>, String> {
     val (rules, frames) = sheets.get("$light $css") { stylesheet(css, light) }
     val anims = HashMap<String, MutableList<MutableList<String>>>()
     val base = HashMap<String, MutableMap<String, String>>()
@@ -205,7 +207,7 @@ private fun animatedValues(css: String, t: Double, light: Boolean): Pair<Map<Str
                         var v1 = v10
                         if (prop == "transform" && v0 == "none") v0 = NUM.replace(v1) { if (v1.startsWith("scale")) "1" else "0" }
                         if (prop == "transform" && v1 == "none") v1 = NUM.replace(v0) { if (v0.startsWith("scale")) "1" else "0" }
-                        value = mixed(v0, v1, eased(timing, if (p1 > p0) (x - p0) / (p1 - p0) else 1.0))
+                        value = mixed(v0, v1, eased(timing, if (p1 > p0) (x - p0) / (p1 - p0) else 1.0), precise)
                         break
                     }
                 }
@@ -259,7 +261,7 @@ private fun pathLength(name: String, attrs: String): Double {
 }
 
 // How many times an animation plays: its iteration count (CSS) or repeatCount (SMIL); null, forever.
-private fun iterations(count: String?): Double? =
+internal fun iterations(count: String?): Double? =
     if (count == "infinite" || count == "indefinite") null else count?.toDoubleOrNull() ?: 1.0
 
 // How far through its current run an animation of dur seconds is at t, from 0 to 1: one that plays a number of times
@@ -272,7 +274,7 @@ private class Smil(val values: List<String>, val keys: List<Double>, val splines
 
 private val smils = Memo<String, Smil>(64)
 
-private fun smilD(attrs: String, t: Double): String {
+internal fun smilD(attrs: String, t: Double, precise: Boolean = false): String {
     val a = smils.get(attrs) {
         val values = (getAttr(attrs, "values") ?: "").split(";")
         Smil(
@@ -290,7 +292,7 @@ private fun smilD(attrs: String, t: Double): String {
         if (p in keys[i]..keys[i + 1]) {
             var f = if (keys[i + 1] > keys[i]) (p - keys[i]) / (keys[i + 1] - keys[i]) else 1.0
             if (a.spline && i < a.splines.size) f = eased(a.splines[i], f)
-            return mixed(a.values[i], a.values[i + 1], f)
+            return mixed(a.values[i], a.values[i + 1], f, precise)
         }
     }
     return a.values.last()

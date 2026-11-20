@@ -81,6 +81,14 @@ class Source(
 // Your logo, ready to draw.
 class OwnLogo(val logo: Logo, val stem: String, val name: String)
 
+// A chain (render-rootiest-icons given an animated SVG and --animate): the animated SVG a render continues (auto
+// layout), its file's name, the still the next step starts from and its colors, its end recipe, how the command line
+// gets that file (its runs so far, and its path), and its steps in words.
+data class ChainState(
+    val svg: String, val name: String, val still: String, val opts: ColorOptions?, val recipe: String,
+    val input: List<String>, val runs: List<String>, val words: List<String>,
+)
+
 // The choices of a detail screen: what is drawn, and what a render writes.
 data class Choices(
     val variant: String = "color",
@@ -103,6 +111,8 @@ data class Choices(
     val morphKind: String = "published", // what morphTo names: published, iconify or own
     val morphColor: ColorSpec? = null, // --morph-color: the target's emblem color (OWN_COLOR: its own); null: the icon's
     val morphTone2: ColorSpec? = null, // --morph-tone2-color: its second tone's (hex)
+    val chain: ChainState? = null, // the animated SVG this render continues (an animated badge starts one by itself)
+    val chainBack: List<ChainState?> = emptyList(), // the chains before it, for Undo
 ) {
     val placedElsewhere get() = preset != "rootiest" || scale != null || x != 0.0 || y != 0.0
 }

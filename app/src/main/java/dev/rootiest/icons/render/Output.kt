@@ -13,7 +13,9 @@ import dev.rootiest.icons.core.NamedBytes
 import dev.rootiest.icons.core.animateSvg
 import dev.rootiest.icons.core.animationTag
 import dev.rootiest.icons.core.FPS
+import dev.rootiest.icons.core.chainFrame
 import dev.rootiest.icons.core.frameSvg
+import dev.rootiest.icons.core.withEndRecipe
 import dev.rootiest.icons.core.frameTimes
 import dev.rootiest.icons.core.playFrames
 import dev.rootiest.icons.core.layoutsOf
@@ -50,11 +52,22 @@ data class Animation(
     val morphTo: String? = null, val target: String? = null,
     val morphColor: ColorSpec? = null, val morphTone2: ColorSpec? = null, // the target's colors, as they apply
     val published: Boolean = false, // a published animated file (an animated badge), playing as it is, by its own timing
+    val recipe: String? = null, // the still it ends on, as render-rootiest-icons names it in the file
+    // continuing an animated SVG (a chain): the SVG it writes in a layout, which plays by its own timing
+    val build: ((String) -> String)? = null,
 ) {
-    val tag get() = if (published) "" else animationTag(animate, loop, duration, morphTo, morphColor, morphTone2)
-    val moves get() = published || (animate != "none" && (animate != "morph" || target != null))
-    // the frames' moments, and whether it plays once: a published file's own (playFrames), an animation's (frameTimes)
-    fun times(moving: String) = if (published) playFrames(moving) else frameTimes(animate, loop, duration)
+    val chained get() = build != null
+    val tag get() = when {
+        chained -> if (animate == "none") "" else "-then" + animationTag(animate, false, duration, morphTo, morphColor, morphTone2) + if (loop) "-loop" else ""
+        published -> ""
+        else -> animationTag(animate, loop, duration, morphTo, morphColor, morphTone2)
+    }
+    val moves get() = published || chained || (animate != "none" && (animate != "morph" || target != null))
+    // the frames' moments, and whether it plays once: a published file's or a chain's own (playFrames), an animation's
+    fun times(moving: String) = if (published || chained) playFrames(moving) else frameTimes(animate, loop, duration)
+    // the SVG it writes in one layout (one: the icon in that layout)
+    fun svg(one: String, lay: String, target: String?): String = build?.invoke(lay)
+        ?: if (animate == "none") one else withEndRecipe(animateSvg(one, animate, duration, loop, target), recipe)
 }
 
 // Every file of a render, as render-rootiest-icons writes them: per layout an SVG (animated, if asked), a PNG, a WebP
@@ -69,7 +82,7 @@ suspend fun renderFiles(
         val name = stem + if (lay == "auto") "" else "-layout-$lay"
         val one = if (lay == "auto" || small.isEmpty()) text else singleLayoutSvg(text, lay)
         val target = animation.target?.let { if (lay != "auto" && layoutsOf(it).isNotEmpty()) singleLayoutSvg(it, lay) else it }
-        val moving = animateSvg(one, animation.animate, animation.duration, animation.loop, target)
+        val moving = animation.svg(one, lay, target)
         if ("svg" in formats) {
             out += Rendered(
                 NamedBytes("$name${animation.tag}.svg", moving.toByteArray()),
@@ -85,7 +98,7 @@ suspend fun renderFiles(
                 val gif = GifSink(100 / FPS, once).takeIf { "gif" in formats }
                 val single = oneLayout(moving, lay, size, small)
                 encodeFrames(times.size, listOfNotNull(webp, gif)) { i ->
-                    Svg.rasterize(rasterSvg(frameSvg(single, times[i]), lay, size, emptyList()), size, background)
+                    Svg.rasterize(rasterSvg(chainFrame(single, times[i]), lay, size, emptyList()), size, background)
                 }
                 val still = Svg.rasterize(rasterSvg(text, lay, size, small), minOf(size, 256), background)
                 webp?.let { out += Rendered(NamedBytes("$name${animation.tag}-${size}px.webp", it.bytes()), still, it.bytes()) }
@@ -146,7 +159,7 @@ fun share(context: Context, files: List<NamedBytes>, stem: String) {
 
 // The layout of an animated SVG a size shows, alone, before its frames are worked out: only what is drawn is worked on.
 private fun oneLayout(text: String, layout: String, size: Int, small: List<Int>) =
-    if (small.isEmpty()) text else singleLayoutSvg(text, resolveLayout(layout, size, small))
+    if (small.isEmpty()) text else dev.rootiest.icons.core.oneLayout(text, resolveLayout(layout, size, small).toString())
 
 // An animated SVG playing, as an animated WebP of px a side (lossy: it is only shown): one layout of it, the one a
 // size shows (as rasterSvg picks it), in light or dark mode (null: the rasters' dark-background shades). Its frames are
@@ -169,7 +182,7 @@ private suspend fun previewFrames(single: String, times: List<Double>, once: Boo
     val frames = withContext(Dispatchers.Default.limitedParallelism(cores)) {
         times.map { t ->
             async {
-                val frame = frameSvg(single, t, light == true)
+                val frame = chainFrame(single, t, light == true)
                 val bitmap = Svg.rasterize(rasterSvg(if (light != null) schemeSvg(frame, light) else frame, layout, size, emptyList()), px)
                 val pixels = IntArray(px * px).also { bitmap.getPixels(it, 0, px, 0, 0, px, px) }
                 val images = sink.images(bitmap)
