@@ -9,7 +9,7 @@ plugins {
 }
 
 // The version scripts/release.sh tags (v<appVersion>).
-extra["appVersion"] = "0.14.0"
+extra["appVersion"] = "0.14.1"
 
 // The versionCode follows from it: major, two digits of minor, two of patch, so 1.2.3 is 10203. Minor and patch stay
 // under 100, or a later version could get a lower code.
