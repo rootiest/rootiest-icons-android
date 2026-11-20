@@ -49,9 +49,12 @@ data class Animation(
     val animate: String = "none", val loop: Boolean = false, val duration: Double? = null,
     val morphTo: String? = null, val target: String? = null,
     val morphColor: ColorSpec? = null, val morphTone2: ColorSpec? = null, // the target's colors, as they apply
+    val published: Boolean = false, // a published animated file (an animated badge), playing as it is, by its own timing
 ) {
-    val tag get() = animationTag(animate, loop, duration, morphTo, morphColor, morphTone2)
-    val moves get() = animate != "none" && (animate != "morph" || target != null)
+    val tag get() = if (published) "" else animationTag(animate, loop, duration, morphTo, morphColor, morphTone2)
+    val moves get() = published || (animate != "none" && (animate != "morph" || target != null))
+    // the frames' moments, and whether it plays once: a published file's own (playFrames), an animation's (frameTimes)
+    fun times(moving: String) = if (published) playFrames(moving) else frameTimes(animate, loop, duration)
 }
 
 // Every file of a render, as render-rootiest-icons writes them: per layout an SVG (animated, if asked), a PNG, a WebP
@@ -75,7 +78,7 @@ suspend fun renderFiles(
             )
         }
         if (animation.moves && ("webp" in formats || "gif" in formats)) {
-            val (times, once) = frameTimes(animation.animate, animation.loop, animation.duration)
+            val (times, once) = animation.times(moving)
             for (size in sizes) {
                 // each frame: the animation's values at its moment, then one layout and the dark-background shades
                 val webp = WebpSink(1000 / FPS, once).takeIf { "webp" in formats }
@@ -149,7 +152,7 @@ private fun oneLayout(text: String, layout: String, size: Int, small: List<Int>)
 // size shows (as rasterSvg picks it), in light or dark mode (null: the rasters' dark-background shades). Its frames are
 // drawn and compressed on several cores at once, then a run of the same frame is kept as one.
 suspend fun animatedPreview(moving: String, animation: Animation, layout: String, size: Int, small: List<Int>, light: Boolean?, px: Int = size): ByteArray {
-    val (times, once) = frameTimes(animation.animate, animation.loop, animation.duration)
+    val (times, once) = animation.times(moving)
     return previewFrames(oneLayout(moving, layout, size, small), times, once, layout, size, light, px)
 }
 

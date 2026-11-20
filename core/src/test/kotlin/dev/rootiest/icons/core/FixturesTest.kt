@@ -148,6 +148,13 @@ class FixturesTest {
     })
 
     @Test
+    fun badgePlayTimes() = check("play times", cases("playTimes").map { c ->
+        val text = c.text("text")!!
+        "${c.str("name")} ${c.getValue("seconds").jsonPrimitive.double} ${c.getValue("frames").jsonPrimitive.int} ${c.getValue("last").jsonPrimitive.double} ${c.getValue("once").jsonPrimitive.boolean}" to
+            playFrames(text).let { (t, once) -> "${c.str("name")} ${playTime(text).seconds} ${t.size} ${t.last()} $once" }
+    })
+
+    @Test
     fun morphTargetColors() = check("morph colors", cases("morphColors").map { c ->
         options(c.getValue("want").jsonObject).toString() to
             morphColors(options(c.getValue("o").jsonObject), c.getValue("emblem").jsonPrimitive.boolean, spec(c["color"]), spec(c["tone2"])).toString()

@@ -40,7 +40,10 @@ import androidx.compose.ui.unit.dp
 import dev.rootiest.icons.Catalogue
 import dev.rootiest.icons.Choices
 import dev.rootiest.icons.Drawn
+import dev.rootiest.icons.BadgeSubject
 import dev.rootiest.icons.EmblemSubject
+import dev.rootiest.icons.badgeAbout
+import dev.rootiest.icons.badgeTitle
 import dev.rootiest.icons.IconSubject
 import dev.rootiest.icons.IconifySubject
 import dev.rootiest.icons.IconsViewModel
@@ -74,6 +77,7 @@ fun DetailScreen(vm: IconsViewModel, route: Route.Detail) {
         is IconifySubject -> subject.name.key
         OwnEmblemSubject -> ownEmblem?.name ?: "Your emblem"
         OwnLogoSubject -> "Your logo"
+        is BadgeSubject -> badgeTitle(subject.entry)
     }
     Scaffold(
         topBar = {
@@ -114,6 +118,8 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
                     else -> true
                 },
                 mine = route.mine && logo != null,
+                // an animated badge starts on an animated GIF, a still on a PNG
+                formats = if (subject is BadgeSubject) listOf("gif") else listOf("png"),
             ),
         )
     }
@@ -145,6 +151,7 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
         }
         (subject as? IconSubject)?.entry?.description?.takeIf { it.isNotEmpty() }?.let { Text(it) }
         (subject as? EmblemSubject)?.entry?.description?.takeIf { it.isNotEmpty() }?.let { Text(it) }
+        (subject as? BadgeSubject)?.entry?.let { Text(badgeAbout(it)) }
         SettingsCard {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 (s.details + listOfNotNull(
@@ -185,7 +192,7 @@ private fun Detail(vm: IconsViewModel, studio: Studio, s: Source, route: Route.D
                 TextButton(onClick = { vm.open(Route.Own) }) { Text("Put it on a logo of your own…") }
             }
         }
-        if (whole) {
+        if (whole && (subject !is BadgeSubject || subject.entry.padded)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Switch(checked = c.padded, onCheckedChange = { c = c.copy(padded = it) })
                 Text("Padded (4% margin)")

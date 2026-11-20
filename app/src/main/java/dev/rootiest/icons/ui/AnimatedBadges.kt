@@ -41,7 +41,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.rootiest.icons.BadgeSubject
 import dev.rootiest.icons.IconsViewModel
+import dev.rootiest.icons.Route
 import dev.rootiest.icons.R
 import dev.rootiest.icons.core.AnimatedEntry
 import dev.rootiest.icons.core.NamedBytes
@@ -103,7 +105,7 @@ internal fun LazyGridScope.animatedBadges(vm: IconsViewModel, list: List<Animate
                 "Badges whose mark morphs from one state to another, its color with it. A change plays once and ends on the " +
                     "new state; the cycle shows every state in turn. Heartbeat is the status icon itself: each state beating " +
                     "(down the diagonal), and a beat in the old color then one in the new. Tap a badge to play it, then save " +
-                    "or share its SVG.",
+                    "or share its SVG, or render it at any size as an animated WebP or GIF.",
                 style = MaterialTheme.typography.bodySmall, color = palette.Subtext0,
             )
             Segmented(shapes.map { it to it.replaceFirstChar(Char::uppercase) }, shape, Modifier.fillMaxWidth().padding(top = 6.dp)) { vm.animatedShape = it }
@@ -119,7 +121,7 @@ internal fun LazyGridScope.animatedBadges(vm: IconsViewModel, list: List<Animate
     if (states.isNotEmpty()) item(key = "animated-matrix", span = { GridItemSpan(maxLineSpan) }) {
         Matrix(vm, ofShape, states, state, chosen)
     }
-    if (chosen != null) item(key = "animated-file", span = { GridItemSpan(maxLineSpan) }) { FileRow(vm, chosen) }
+    if (chosen != null) item(key = "animated-file", span = { GridItemSpan(maxLineSpan) }) { FileRow(vm, list.first { it.name == chosen }) }
 }
 
 // The changes, from (rows) to (columns), each cell as large as the width allows (up to a point), centered.
@@ -198,9 +200,10 @@ private fun Playing(vm: IconsViewModel, name: String, size: Dp, light: Boolean, 
     else SvgImage(still, size, description, light = light)
 }
 
-// The chosen badge's file, to save to Downloads or share.
+// The chosen badge's file, to save to Downloads or share, and its render panel (any size, animated WebP or GIF).
 @Composable
-private fun FileRow(vm: IconsViewModel, name: String) {
+private fun FileRow(vm: IconsViewModel, entry: AnimatedEntry) {
+    val name = entry.name
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val file = "$name.svg"
@@ -216,7 +219,10 @@ private fun FileRow(vm: IconsViewModel, name: String) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(file, style = MaterialTheme.typography.labelMedium, color = palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("SVG only: anything that does not play it shows the first state", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+            Text("Render it for any size, animated WebP or GIF", style = MaterialTheme.typography.bodySmall, color = palette.Subtext0)
+        }
+        IconButton(onClick = { vm.open(Route.Detail(BadgeSubject(entry))) }) {
+            Icon(painterResource(R.drawable.ic_tabler_adjustments), contentDescription = "Render $name: sizes and formats", Modifier.size(22.dp), tint = palette.Subtext0)
         }
         IconButton(onClick = {
             withFile("save") { f ->

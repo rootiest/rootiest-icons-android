@@ -1,5 +1,6 @@
 package dev.rootiest.icons
 
+import dev.rootiest.icons.core.AnimatedEntry
 import dev.rootiest.icons.core.ColorOptions
 import dev.rootiest.icons.core.ColorSpec
 import dev.rootiest.icons.core.Emblem
@@ -41,8 +42,25 @@ sealed interface Subject
 data class IconSubject(val entry: IconEntry) : Subject
 data class EmblemSubject(val entry: EmblemEntry) : Subject
 data class IconifySubject(val name: ExternalName) : Subject
+// An animated status badge, rendered as it is published (render-icon.py by its name): its own animation and colors.
+data class BadgeSubject(val entry: AnimatedEntry) : Subject
 data object OwnEmblemSubject : Subject
 data object OwnLogoSubject : Subject
+
+// An animated badge's name in words, and what it does.
+fun badgeTitle(a: AnimatedEntry) = when {
+    a.from == null -> "Every state in turn (${a.shape})"
+    a.shape == "shine" -> "${a.from}, shining"
+    a.from == a.to -> "${a.from}, beating"
+    else -> "${a.from} becomes ${a.to} (${a.shape})"
+}
+
+fun badgeAbout(a: AnimatedEntry) = when {
+    a.from == null -> "Every state in turn, again and again (${a.shape})."
+    a.shape == "shine" -> "The ${a.from} status icon, with a glint crossing its emblem now and then."
+    a.from == a.to -> "The ${a.from} status icon, beating like a heart monitor, again and again."
+    else -> "${a.from} becomes ${a.to} (${a.shape}), played once, ending on ${a.to}."
+}
 
 // A subject, loaded: its emblem cleaned and measured (none for a logo alone), and what to call it.
 class Source(
@@ -185,6 +203,12 @@ class Studio(private val repo: Repo, val index: Index) {
             )
         }
         OwnLogoSubject -> Source(subject, "Your logo", null, "", null, "logo", emptyList())
+        is BadgeSubject -> {
+            val a = subject.entry
+            Source(subject, badgeTitle(a), null, a.name, null, a.name,
+                listOf("Name" to a.name, "Plays" to if (a.from != null && a.from != a.to && a.shape != "shine") "once, holding its end" else "again and again"),
+                variants = listOf("color"))
+        }
     }
 
     // Your logo: cleaned, measured and fitted into the Rootiest logo's extent.
@@ -209,7 +233,12 @@ class Studio(private val repo: Repo, val index: Index) {
         val args = ArrayList<String>()
         var built = false
         var raw: String? = null // an emblem alone: its own file, which the auto variant recolors in two versions
-        if (!whole) {
+        if (subject is BadgeSubject) {
+            text = repo.svg("color/animated/${if (c.padded) "padded/" else ""}${subject.entry.name}.svg")
+            parts = Parts()
+            stemBase = subject.entry.name
+            args += subject.entry.name
+        } else if (!whole) {
             val keep = if (subject is EmblemSubject) subject.entry.keepFill else e!!.keep
             val twoTone = if (subject is EmblemSubject) subject.entry.twoTone else e!!.twoTone
             val base = if (subject is EmblemSubject) repo.svg("emblems/${subject.entry.name}.svg") else emblemSvg(cfg, e!!.body, e.bbox, e.keep, e.about)
